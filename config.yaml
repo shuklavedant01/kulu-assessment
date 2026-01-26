@@ -1,0 +1,33 @@
+# Audio Conversion Configuration
+
+audio:
+  # Input folder containing audio files to convert
+  input_folder: "audio_files"
+  
+  # Output folder for converted audio files
+  output_folder: "outputs/converted"
+  
+  # Target audio format settings
+  target_format:
+    sample_rate: 16000  # 16kHz
+    channels: 1         # Mono
+    format: "wav"       # Output format
+  
+  # Supported input formats
+  supported_formats:
+    - mp3
+    - wav
+    - ogg
+    - oga
+    - flac
+    - m4a
+    - aac
+    - wma
+    - aiff
+    - opus
+    - webm
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(levelname)s - %(message)s"
