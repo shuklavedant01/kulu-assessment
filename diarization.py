@@ -23,14 +23,26 @@ try:
 except ImportError:
     NOISE_REDUCTION_AVAILABLE = False
 
+
 # Function to perform diarization on a single audio file
-def diarize_audio(audio_path, pipeline):
-    """Run speaker diarization and label speakers as Agent/User"""
+def diarize_audio(audio_path, pipeline, num_speakers=None):
+    """Run speaker diarization and label speakers as Agent/User
+    
+    Args:
+        audio_path: Path to audio file
+        pipeline: Pyannote pipeline
+        num_speakers: Force specific number of speakers (None = auto-detect, 2 = force 2 speakers)
+    """
     
     print(f"Processing: {audio_path.name}...")
     
     # Run diarization pipeline on audio file
-    diarization = pipeline(str(audio_path))
+    # If num_speakers specified, force that many speakers
+    if num_speakers is not None:
+        diarization = pipeline(str(audio_path), num_speakers=num_speakers)
+    else:
+        diarization = pipeline(str(audio_path))
+
     
     # Extract all segments with speaker labels
     segments = []
@@ -108,8 +120,17 @@ def save_results(results, output_folder, audio_filename):
 
 
 # Function to process all files in a folder
-def process_folder(input_folder='outputs/converted', output_folder='outputs/diarization', apply_noise_reduction=False, noise_threshold=None):
-    """Process all WAV files for speaker diarization"""
+def process_folder(input_folder='outputs/converted', output_folder='outputs/diarization', 
+                    apply_noise_reduction=False, noise_threshold=None, num_speakers=None):
+    """Process all WAV files for speaker diarization
+    
+    Args:
+        input_folder: Input folder with WAV files
+        output_folder: Output folder for JSON results
+        apply_noise_reduction: Apply noise gate before diarization
+        noise_threshold: Manual noise threshold (dBFS)
+        num_speakers: Force specific number of speakers (2 = Agent + User only)
+    """
     
     # Apply noise reduction if requested
     actual_input_folder = input_folder
@@ -169,7 +190,7 @@ def process_folder(input_folder='outputs/converted', output_folder='outputs/diar
     for audio_file in audio_files:
         try:
             # Run diarization
-            results = diarize_audio(audio_file, pipeline)
+            results = diarize_audio(audio_file, pipeline, num_speakers)
             
             # Save to JSON
             save_results(results, output_folder, audio_file.name)
@@ -227,6 +248,8 @@ Examples:
                         help='Apply noise reduction before diarization (recommended)')
     parser.add_argument('--noise-threshold', type=float,
                         help='Manual noise threshold in dBFS (e.g., -35). Auto-detect if not specified')
+    parser.add_argument('--num-speakers', type=int,
+                        help='Force specific number of speakers (2 = Agent + User only, recommended for 1-on-1 calls)')
 
 
     
@@ -250,9 +273,9 @@ Examples:
 
         
         # Process single file
-        results = diarize_audio(Path(args.file), pipeline)
+        results = diarize_audio(Path(args.file), pipeline, args.num_speakers)
         save_results(results, args.output, args.file)
     else:
         # Process entire folder
-        process_folder(args.input, args.output, args.noise_reduce, args.noise_threshold)
+        process_folder(args.input, args.output, args.noise_reduce, args.noise_threshold, args.num_speakers)
 
