@@ -15,6 +15,14 @@ from pyannote.audio import Pipeline
 # Read from environment variable or use provided token
 
 
+
+# Optional: Import noise reduction (if available)
+try:
+    from noise_reduction import apply_noise_gate
+    NOISE_REDUCTION_AVAILABLE = True
+except ImportError:
+    NOISE_REDUCTION_AVAILABLE = False
+
 # Function to perform diarization on a single audio file
 def diarize_audio(audio_path, pipeline):
     """Run speaker diarization and label speakers as Agent/User"""
@@ -100,11 +108,37 @@ def save_results(results, output_folder, audio_filename):
 
 
 # Function to process all files in a folder
-def process_folder(input_folder='outputs/converted', output_folder='outputs/diarization'):
+def process_folder(input_folder='outputs/converted', output_folder='outputs/diarization', apply_noise_reduction=False, noise_threshold=None):
     """Process all WAV files for speaker diarization"""
     
-    print(f"\nInitializing pyannote pipeline...")
+    # Apply noise reduction if requested
+    actual_input_folder = input_folder
+    if apply_noise_reduction:
+        if NOISE_REDUCTION_AVAILABLE:
+            print(f"\n{'='*60}")
+            print("STEP 1: Noise Reduction")
+            print(f"{'='*60}\n")
+            
+            cleaned_folder = 'outputs/cleaned'
+            Path(cleaned_folder).mkdir(parents=True, exist_ok=True)
+            
+            # Process each file with noise gate
+            input_path = Path(input_folder)
+            for audio_file in input_path.glob('*.wav'):
+                output_path = Path(cleaned_folder) / audio_file.name
+                apply_noise_gate(str(audio_file), str(output_path), noise_threshold, threshold_offset=12)
+            
+            # Use cleaned files for diarization
+            actual_input_folder = cleaned_folder
+            print(f"\n{'='*60}")
+            print("STEP 2: Speaker Diarization")
+            print(f"{'='*60}\n")
+        else:
+            print("⚠️  Warning: noise_reduction module not found, skipping noise reduction\n")
+    
+    print(f"Initializing pyannote pipeline...")
     print(f"Loading model from HuggingFace...\n")
+
     
     # Initialize pyannote pipeline with authentication
     pipeline = Pipeline.from_pretrained(
@@ -189,6 +223,11 @@ Examples:
                         help='Output folder for JSON results (default: outputs/diarization)')
     parser.add_argument('-f', '--file', type=str,
                         help='Process single audio file instead of folder')
+    parser.add_argument('--noise-reduce', action='store_true',
+                        help='Apply noise reduction before diarization (recommended)')
+    parser.add_argument('--noise-threshold', type=float,
+                        help='Manual noise threshold in dBFS (e.g., -35). Auto-detect if not specified')
+
 
     
     # Parse arguments
@@ -215,4 +254,5 @@ Examples:
         save_results(results, args.output, args.file)
     else:
         # Process entire folder
-        process_folder(args.input, args.output)
+        process_folder(args.input, args.output, args.noise_reduce, args.noise_threshold)
+
