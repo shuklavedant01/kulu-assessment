@@ -112,6 +112,18 @@ def process_folder(input_folder='outputs/converted', output_folder='outputs/diar
         use_auth_token=HF_TOKEN
     )
     
+    # Enable GPU if available
+    import torch
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    pipeline = pipeline.to(device)
+    print(f"🚀 Using device: {device}")
+    if device.type == "cuda":
+        print(f"   GPU: {torch.cuda.get_device_name(0)}")
+        print(f"   Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB\n")
+    else:
+        print(f"   ⚠️  Running on CPU (will be slower)\n")
+
+    
     # Get all WAV files from input folder
     input_path = Path(input_folder)
     audio_files = list(input_path.glob('*.wav'))
@@ -185,11 +197,18 @@ Examples:
     # Process single file or entire folder
     if args.file:
         # Initialize pipeline
+        import torch
         print("Initializing pyannote pipeline...")
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
             use_auth_token=HF_TOKEN
         )
+        
+        # Enable GPU if available
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        pipeline = pipeline.to(device)
+        print(f"🚀 Using device: {device}\n")
+
         
         # Process single file
         results = diarize_audio(Path(args.file), pipeline)
