@@ -15,7 +15,6 @@ from pyannote.audio import Pipeline
 # Read from environment variable or use provided token
 
 
-
 # Function to perform diarization on a single audio file
 def diarize_audio(audio_path, pipeline):
     """Run speaker diarization and label speakers as Agent/User"""
