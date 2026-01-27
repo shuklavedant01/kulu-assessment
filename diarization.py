@@ -154,13 +154,31 @@ def process_folder(input_folder='outputs/converted', output_folder='outputs/diar
 # CLI argument parsing
 if __name__ == '__main__':
     # Setup command line arguments
-    parser = argparse.ArgumentParser(description='Speaker diarization for audio files')
+    parser = argparse.ArgumentParser(
+        description='Speaker diarization for audio files - Identify Agent and User speakers',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Process all WAV files in outputs/converted/
+  python diarization.py
+  
+  # Process a single audio file
+  python diarization.py -f outputs/converted/audio1.wav
+  
+  # Process files from custom folder
+  python diarization.py -i my_audio_folder -o my_results
+  
+  # Process single file to custom output folder
+  python diarization.py -f audio.wav -o my_results
+        """
+    )
     parser.add_argument('-i', '--input', type=str, default='outputs/converted',
                         help='Input folder with WAV files (default: outputs/converted)')
     parser.add_argument('-o', '--output', type=str, default='outputs/diarization',
                         help='Output folder for JSON results (default: outputs/diarization)')
     parser.add_argument('-f', '--file', type=str,
-                        help='Process single audio file')
+                        help='Process single audio file instead of folder')
+
     
     # Parse arguments
     args = parser.parse_args()
