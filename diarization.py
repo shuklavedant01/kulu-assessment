@@ -12,7 +12,7 @@ from pyannote.audio import Pipeline
 
 
 # HuggingFace token for pyannote model access
-
+# Read from environment variable or use provided token
 
 
 
