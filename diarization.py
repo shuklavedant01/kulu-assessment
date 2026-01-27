@@ -126,7 +126,7 @@ def process_folder(input_folder='outputs/converted', output_folder='outputs/diar
             input_path = Path(input_folder)
             for audio_file in input_path.glob('*.wav'):
                 output_path = Path(cleaned_folder) / audio_file.name
-                apply_noise_gate(str(audio_file), str(output_path), noise_threshold, threshold_offset=12)
+                apply_noise_gate(str(audio_file), str(output_path), noise_threshold, threshold_offset=8)
             
             # Use cleaned files for diarization
             actual_input_folder = cleaned_folder

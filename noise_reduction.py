@@ -76,7 +76,7 @@ def detect_noise_floor(audio_path, chunk_duration_ms=100, percentile=15):
 
 
 # Function to apply noise gate
-def apply_noise_gate(audio_path, output_path, threshold_db=None, threshold_offset=12):
+def apply_noise_gate(audio_path, output_path, threshold_db=None, threshold_offset=8):
     """
     Apply noise gate to remove background noise
     
@@ -84,7 +84,7 @@ def apply_noise_gate(audio_path, output_path, threshold_db=None, threshold_offse
         audio_path: Input audio file path
         output_path: Output audio file path
         threshold_db: Manual threshold (dBFS). If None, auto-detect
-        threshold_offset: dB above noise floor for auto threshold (default 12)
+        threshold_offset: dB above noise floor for auto threshold (default 8)
     
     Returns:
         threshold_used: The threshold that was applied
@@ -184,8 +184,9 @@ Examples:
                         help='Output folder for cleaned files')
     parser.add_argument('-t', '--threshold', type=float,
                         help='Manual threshold in dBFS (e.g., -35)')
-    parser.add_argument('--offset', type=float, default=12,
-                        help='Threshold offset above noise floor (default: 12 dB)')
+    parser.add_argument('--offset', type=float, default=8,
+                        help='Threshold offset above noise floor (default: 8 dB)')
+
     
     args = parser.parse_args()
     
