@@ -8,6 +8,7 @@ CLI tools for processing, analyzing, and visualizing audio files for conversatio
 ✅ **Audio Analysis** - Check duration, sample rate, channels, bit depth  
 ✅ **Quality Verification** - Detect corrupted files and verify content  
 ✅ **Waveform Visualization** - Generate conversation structure plots  
+✅ **Speaker Diarization** - Identify Agent and User speakers with timestamps  
 ✅ **Complete Pipeline** - Run all steps together with one command
 
 ## Requirements
@@ -125,6 +126,51 @@ python visualizer.py -d input_folder -o output_folder
 - Full waveform (shows amplitude over time)
 - Envelope plot (shows conversation structure)
 
+#### Speaker Diarization
+
+Identify Agent and User speakers:
+
+```bash
+# Diarize all files in outputs/converted/
+python diarization.py
+
+# Diarize specific file
+python diarization.py -f outputs/converted/audio1.wav
+
+# Custom folders
+python diarization.py -i input_folder -o output_folder
+```
+
+**Output (JSON):**
+- Timestamp segments with speaker labels
+- Agent = first speaker detected
+- User = other speaker(s)
+- Turn-taking statistics
+- Gap calculations between turns
+
+**Example output structure:**
+```json
+{
+  "filename": "audio1.wav",
+  "segments": [
+    {
+      "start": 0.5,
+      "end": 3.2,
+      "duration": 2.7,
+      "speaker": "Agent",
+      "original_label": "SPEAKER_00"
+    }
+  ],
+  "statistics": {
+    "total_segments": 4,
+    "agent_speaking_time": 7.5,
+    "user_speaking_time": 8.8,
+    "avg_gap_between_turns": 0.633
+  }
+}
+```
+
+
 ## Examples
 
 ### Analyze Audio Files
@@ -178,11 +224,14 @@ kulu-assessment/
 │   └── audio3.oga
 ├── outputs/
 │   ├── converted/           # Converted WAV files
-│   └── visualizations/      # Waveform PNG images
+│   ├── visualizations/      # Waveform PNG images
+│   └── diarization/         # Speaker diarization JSON
 ├── audio_converter.py       # Audio conversion tool
 ├── analyzer.py              # Audio analysis tool
 ├── visualizer.py            # Waveform visualization tool
+├── diarization.py           # Speaker diarization tool
 ├── main.py                  # Complete pipeline
+├── .env                     # Environment variables (HF token)
 ├── config.yaml              # Configuration
 └── requirements.txt         # Dependencies
 ```
@@ -195,6 +244,7 @@ MP3, WAV, OGG, OGA, FLAC, M4A, AAC
 
 - **Converted Audio:** `outputs/converted/*.wav` (16kHz, mono)
 - **Visualizations:** `outputs/visualizations/*_waveform.png`
+- **Diarization:** `outputs/diarization/*_diarization.json`
 
 ## Troubleshooting
 

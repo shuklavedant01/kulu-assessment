@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+*.env
+
+# IDE
+.vscode/
+.idea/
+
+# Output folders
+outputs/
+
+# OS
+.DS_Store
+Thumbs.db
