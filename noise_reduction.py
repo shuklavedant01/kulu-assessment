@@ -54,14 +54,17 @@ def reduce_noise_spectral(audio_path, output_path, prop_decrease=0.8, stationary
         prop_decrease=prop_decrease
     )
     
-    # Convert back to int16
+    # Convert back to int16 and ensure proper shape
     reduced_samples = (reduced_samples * max_val).astype(np.int16)
     
-    # Create new AudioSegment
+    # Ensure the array is C-contiguous and properly aligned
+    reduced_samples = np.ascontiguousarray(reduced_samples)
+    
+    # Create new AudioSegment from raw data
     cleaned_audio = AudioSegment(
-        reduced_samples.tobytes(),
-        frame_rate=audio.frame_rate,
+        data=reduced_samples.tobytes(),
         sample_width=audio.sample_width,
+        frame_rate=audio.frame_rate,
         channels=1
     )
     
