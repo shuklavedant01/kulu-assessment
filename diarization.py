@@ -47,17 +47,32 @@ def diarize_audio(audio_path, pipeline, num_speakers=None):
     # Extract all segments with speaker labels
     segments = []
     speakers_seen = {}
-    first_speaker = None
+    speaker_order = []  # Track order of appearance
     
     # Process each segment from diarization results
     for turn, _, speaker in diarization.itertracks(yield_label=True):
-        # Track first speaker to label as Agent
-        if first_speaker is None:
-            first_speaker = speaker
-            speakers_seen[speaker] = "Agent"
-        elif speaker not in speakers_seen:
-            # All other speakers labeled as User
-            speakers_seen[speaker] = "User"
+        # Track order of unique speakers
+        if speaker not in speaker_order:
+            speaker_order.append(speaker)
+            
+            # Assign labels based on order of appearance
+            position = len(speaker_order)
+            
+            if position == 1:
+                # 1st speaker = Agent (English)
+                speakers_seen[speaker] = "Agent"
+            elif position == 2:
+                # 2nd speaker = User
+                speakers_seen[speaker] = "User"
+            elif position == 3:
+                # 3rd speaker = Agent (Russian/different language)
+                # This will be merged with 1st Agent in the final output
+                speakers_seen[speaker] = "Agent"
+                print(f"  Detected 3rd speaker: {speaker} → Agent (language variation)")
+            else:
+                # If somehow 4+ speakers detected, label as User
+                speakers_seen[speaker] = "User"
+                print(f"  Warning: {speaker} (4th+ speaker) → User")
         
         # Add segment with timestamp and speaker label
         segments.append({
@@ -250,6 +265,7 @@ Examples:
                         help='Manual noise threshold in dBFS (e.g., -35). Auto-detect if not specified')
     parser.add_argument('--num-speakers', type=int,
                         help='Force specific number of speakers (2 = Agent + User only, recommended for 1-on-1 calls)')
+
 
 
     

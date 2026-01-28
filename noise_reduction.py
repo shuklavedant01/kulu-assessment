@@ -1,155 +1,92 @@
 #!/usr/bin/env python3
 """
-Noise Reduction - Remove background noise using energy-based filtering
+Noise Reduction - Remove background noise using spectral subtraction
 """
 
 # Import required libraries
 import numpy as np
 from pydub import AudioSegment
-import math
+import noisereduce as nr
 
 
-# Function to calculate RMS energy in dBFS
-def calculate_rms_db(audio_segment):
-    """Calculate RMS (Root Mean Square) energy in dBFS"""
-    
-    # Get audio samples as array
-    samples = np.array(audio_segment.get_array_of_samples())
-    
-    # Handle empty or silent segments
-    if len(samples) == 0 or np.all(samples == 0):
-        return -96.0  # Very quiet (near digital silence)
-    
-    # Calculate RMS
-    rms = np.sqrt(np.mean(samples.astype(float) ** 2))
-    
-    # Convert to dBFS (decibels relative to full scale)
-    # For 16-bit audio, max value is 32768
-    max_value = float(2 ** (audio_segment.sample_width * 8 - 1))
-    
-    if rms > 0:
-        dbfs = 20 * math.log10(rms / max_value)
-    else:
-        dbfs = -96.0  # Digital silence
-    
-    return dbfs
-
-
-# Function to detect noise floor
-def detect_noise_floor(audio_path, chunk_duration_ms=100, percentile=15):
+def reduce_noise_spectral(audio_path, output_path, prop_decrease=0.8, stationary=True):
     """
-    Analyze audio to find the noise floor (baseline background noise level)
+    Apply spectral noise reduction to remove background noise
     
-    Args:
-        audio_path: Path to audio file
-        chunk_duration_ms: Size of chunks to analyze (milliseconds)
-        percentile: Percentile to use for noise floor (default 15 = bottom 15%)
-    
-    Returns:
-        noise_floor_db: Noise floor level in dBFS
-    """
-    
-    print(f"  Analyzing noise floor...")
-    
-    # Load audio
-    audio = AudioSegment.from_wav(audio_path)
-    
-    # Split into chunks
-    chunks = []
-    for i in range(0, len(audio), chunk_duration_ms):
-        chunk = audio[i:i + chunk_duration_ms]
-        if len(chunk) > 0:
-            chunks.append(chunk)
-    
-    # Calculate energy for each chunk
-    chunk_energies = []
-    for chunk in chunks:
-        energy_db = calculate_rms_db(chunk)
-        chunk_energies.append(energy_db)
-    
-    # Find noise floor (15th percentile = typical background noise)
-    noise_floor_db = np.percentile(chunk_energies, percentile)
-    
-    print(f"  Noise floor detected: {noise_floor_db:.1f} dBFS")
-    
-    return noise_floor_db
-
-
-# Function to apply noise gate
-def apply_noise_gate(audio_path, output_path, threshold_db=None, threshold_offset=8):
-    """
-    Apply noise gate to remove background noise
+    This method uses frequency-based noise reduction which is much better
+    at preserving soft speech compared to energy-based gating.
     
     Args:
         audio_path: Input audio file path
         output_path: Output audio file path
-        threshold_db: Manual threshold (dBFS). If None, auto-detect
-        threshold_offset: dB above noise floor for auto threshold (default 8)
+        prop_decrease: Proportion of noise to reduce (0.0-1.0, default 0.8 = 80%)
+        stationary: True for constant background noise, False for changing noise
     
     Returns:
-        threshold_used: The threshold that was applied
-        removed_percentage: Percentage of audio muted
+        None
     """
     
-    print(f"\nApplying noise gate to: {audio_path}")
+    print(f"\nApplying spectral noise reduction to: {audio_path}")
     
-    # Load audio
+    # Load audio using pydub
     audio = AudioSegment.from_wav(audio_path)
     
-    # Auto-detect threshold if not provided
-    if threshold_db is None:
-        noise_floor = detect_noise_floor(audio_path)
-        threshold_db = noise_floor + threshold_offset
-        print(f"  Auto threshold: {threshold_db:.1f} dBFS (noise floor + {threshold_offset} dB)")
-    else:
-        print(f"  Manual threshold: {threshold_db:.1f} dBFS")
+    # Convert to numpy array
+    samples = np.array(audio.get_array_of_samples(), dtype=np.float32)
     
-    # Process audio in chunks
-    chunk_duration_ms = 50  # 50ms chunks for smooth gating
-    processed_chunks = []
-    total_chunks = 0
-    muted_chunks = 0
+    # If stereo, convert to mono (take first channel)
+    if audio.channels == 2:
+        samples = samples.reshape((-1, 2))
+        samples = samples[:, 0]
     
-    for i in range(0, len(audio), chunk_duration_ms):
-        chunk = audio[i:i + chunk_duration_ms]
-        
-        if len(chunk) == 0:
-            continue
-        
-        total_chunks += 1
-        
-        # Calculate chunk energy
-        chunk_energy = calculate_rms_db(chunk)
-        
-        # Apply gate
-        if chunk_energy < threshold_db:
-            # Below threshold - replace with silence
-            silent_chunk = AudioSegment.silent(duration=len(chunk), frame_rate=audio.frame_rate)
-            processed_chunks.append(silent_chunk)
-            muted_chunks += 1
-        else:
-            # Above threshold - keep original
-            processed_chunks.append(chunk)
+    # Normalize to [-1, 1] range
+    max_val = float(2 ** (audio.sample_width * 8 - 1))
+    samples = samples / max_val
     
-    # Combine processed chunks
-    if len(processed_chunks) > 0:
-        cleaned_audio = processed_chunks[0]
-        for chunk in processed_chunks[1:]:
-            cleaned_audio += chunk
-    else:
-        cleaned_audio = audio
+    print(f"  Analyzing noise profile...")
+    
+    # Apply spectral noise reduction
+    # The library automatically detects noise from quiet parts
+    reduced_samples = nr.reduce_noise(
+        y=samples,
+        sr=audio.frame_rate,
+        stationary=stationary,
+        prop_decrease=prop_decrease
+    )
+    
+    # Convert back to int16
+    reduced_samples = (reduced_samples * max_val).astype(np.int16)
+    
+    # Create new AudioSegment
+    cleaned_audio = AudioSegment(
+        reduced_samples.tobytes(),
+        frame_rate=audio.frame_rate,
+        sample_width=audio.sample_width,
+        channels=1
+    )
     
     # Export cleaned audio
     cleaned_audio.export(output_path, format='wav')
     
-    # Calculate statistics
-    removed_percentage = (muted_chunks / total_chunks * 100) if total_chunks > 0 else 0
-    
-    print(f"  ✓ Noise gate applied")
-    print(f"  Muted: {removed_percentage:.1f}% of audio")
+    print(f"  ✓ Noise reduction applied (reduced by {prop_decrease*100:.0f}%)")
     print(f"  Saved: {output_path}\n")
+
+
+# Backward compatibility wrapper (uses spectral reduction now)
+def apply_noise_gate(audio_path, output_path, threshold_db=None, threshold_offset=8):
+    """
+    Legacy function for backward compatibility
+    Now uses spectral noise reduction instead of energy gating
     
-    return threshold_db, removed_percentage
+    Args:
+        audio_path: Input audio file path
+        output_path: Output audio file path
+        threshold_db: Ignored (kept for compatibility)
+        threshold_offset: Ignored (kept for compatibility)
+    """
+    # Use default spectral reduction settings
+    reduce_noise_spectral(audio_path, output_path, prop_decrease=0.8, stationary=True)
+    return -35.0, 15.0  # Dummy values for compatibility
 
 
 # CLI interface
@@ -158,20 +95,20 @@ if __name__ == '__main__':
     from pathlib import Path
     
     parser = argparse.ArgumentParser(
-        description='Remove background noise using energy-based filtering',
+        description='Remove background noise using spectral subtraction (frequency-based)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Auto-detect threshold and clean audio
+  # Auto-detect and reduce noise (80% reduction)
   python noise_reduction.py -f audio.wav
   
-  # Manual threshold
-  python noise_reduction.py -f audio.wav -t -35
+  # Gentle noise reduction (50%)
+  python noise_reduction.py -f audio.wav --strength 0.5
   
-  # Custom offset for auto threshold
-  python noise_reduction.py -f audio.wav --offset 15
+  # Aggressive noise reduction (95%)
+  python noise_reduction.py -f audio.wav --strength 0.95
   
-  # Process folder
+  # Process entire folder
   python noise_reduction.py -i outputs/converted -o outputs/cleaned
         """
     )
@@ -182,11 +119,10 @@ Examples:
                         help='Input folder with WAV files')
     parser.add_argument('-o', '--output', type=str, default='outputs/cleaned',
                         help='Output folder for cleaned files')
-    parser.add_argument('-t', '--threshold', type=float,
-                        help='Manual threshold in dBFS (e.g., -35)')
-    parser.add_argument('--offset', type=float, default=8,
-                        help='Threshold offset above noise floor (default: 8 dB)')
-
+    parser.add_argument('--strength', type=float, default=0.8,
+                        help='Noise reduction strength 0.0-1.0 (default: 0.8 = 80%%)')
+    parser.add_argument('--non-stationary', action='store_true',
+                        help='Use for changing/non-constant background noise')
     
     args = parser.parse_args()
     
@@ -194,12 +130,16 @@ Examples:
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # Validate strength
+    strength = max(0.0, min(1.0, args.strength))
+    stationary = not args.non_stationary
+    
     # Process single file or folder
     if args.file:
         # Single file
         input_path = Path(args.file)
         output_path = output_dir / input_path.name
-        apply_noise_gate(str(input_path), str(output_path), args.threshold, args.offset)
+        reduce_noise_spectral(str(input_path), str(output_path), strength, stationary)
     else:
         # Batch processing
         input_dir = Path(args.input)
@@ -210,7 +150,7 @@ Examples:
         
         for audio_file in audio_files:
             output_path = output_dir / audio_file.name
-            apply_noise_gate(str(audio_file), str(output_path), args.threshold, args.offset)
+            reduce_noise_spectral(str(audio_file), str(output_path), strength, stationary)
         
         print(f"{'='*60}")
         print(f"Noise reduction complete! Cleaned files saved to: {args.output}")
