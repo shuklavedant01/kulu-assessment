@@ -37,10 +37,11 @@ def get_timestamps_from_whisper(audio_path, model_name='base'):
     result = model.transcribe(
         str(audio_path),
         word_timestamps=True,
-        verbose=False
+        verbose=True  # Show progress to ensure completion
     )
     
-    print(f"✓ Found {len(result['segments'])} segments with timestamps\n")
+    print(f"✓ Found {len(result['segments'])} segments with timestamps")
+    print(f"  Total duration: {result['segments'][-1]['end']:.1f}s\n")
     
     return result['segments']
 
@@ -265,7 +266,8 @@ Examples:
     parser.add_argument('-d', '--diarization', type=str,
                         help='Diarization JSON file for speaker labels (optional)')
     parser.add_argument('-o', '--output', type=str,
-                        help='Output JSON file (default: <audio>_timestamp_transcription.json)')
+                        help='Output JSON file (default: outputs/transcription/<audio>_timestamp_transcription.json)')
+
     parser.add_argument('--model', type=str, default='base',
                         choices=['tiny', 'base', 'small', 'medium', 'large'],
                         help='Whisper model size (default: base)')
@@ -275,10 +277,13 @@ Examples:
     # Process
     results = process_audio(args.file, args.diarization, args.model)
     
-    # Save
+    # Save with organized structure
     if args.output:
         output_path = args.output
     else:
-        output_path = Path(args.file).stem + '_timestamp_transcription.json'
+        # Default: outputs/transcription/<filename>_timestamp_transcription.json
+        output_dir = Path('outputs/transcription')
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{Path(args.file).stem}_timestamp_transcription.json"
     
     save_results(results, output_path)
