@@ -32,18 +32,33 @@ def get_timestamps_from_whisper(audio_path, model_name='base'):
     # Load model
     model = whisper.load_model(model_name)
     
-    # Transcribe to get timestamps (might translate, but timestamps are accurate)
+    # Transcribe to get timestamps AND translate to English
     print(f"Processing for timestamp detection...")
     result = model.transcribe(
         str(audio_path),
+        task='translate',  # Explicitly translate all languages to English
         word_timestamps=True,
         verbose=True  # Show progress to ensure completion
     )
     
     print(f"✓ Found {len(result['segments'])} segments with timestamps")
-    print(f"  Total duration: {result['segments'][-1]['end']:.1f}s\n")
     
-    return result['segments']
+    # Filter out hallucinated segments (noise misdetected as speech)
+    filtered_segments = []
+    skipped_hallucinations = 0
+    
+    for seg in result['segments']:
+        # Skip segments with high no-speech probability (likely hallucinations)
+        no_speech_prob = seg.get('no_speech_probability', 0)
+        if no_speech_prob > 0.6:  # Threshold: 60% confidence it's NOT speech
+            skipped_hallucinations += 1
+            continue
+        filtered_segments.append(seg)
+    
+    print(f"  Total duration: {result['segments'][-1]['end']:.1f}s")
+    print(f"  Filtered out {skipped_hallucinations} hallucinated segments (noise)\n")
+    
+    return filtered_segments
 
 
 def retranscribe_segments_with_language(audio_path, segments, model_name='base', language_map=None):
@@ -227,7 +242,7 @@ def process_audio(audio_path, diarization_json=None, model_name='base'):
         original_final = transcribed_segments
         translated_final = translated_segments
     
-    # Build results for ORIGINAL version
+    # Build results for TRANSCRIPTION version (original languages)
     original_results = {
         'filename': Path(audio_path).name,
         'segments': original_final,
@@ -235,10 +250,10 @@ def process_audio(audio_path, diarization_json=None, model_name='base'):
         'is_multilingual': len(languages) > 1,
         'model_used': model_name,
         'method': 'timestamp-first-retranscription',
-        'version': 'original'
+        'version': 'transcription'  # Original transcription with preserved languages
     }
     
-    # Build results for TRANSLATED version
+    # Build results for ENGLISH version (translated)
     translated_results = {
         'filename': Path(audio_path).name,
         'segments': translated_final,
@@ -246,7 +261,7 @@ def process_audio(audio_path, diarization_json=None, model_name='base'):
         'is_multilingual': False,
         'model_used': model_name,
         'method': 'timestamp-first-translation',
-        'version': 'translated',
+        'version': 'english_version',  # All content translated to English
         'note': 'All segments translated to English by Whisper'
     }
     
@@ -255,18 +270,18 @@ def process_audio(audio_path, diarization_json=None, model_name='base'):
     print(f"Transcription Complete - DUAL OUTPUT")
     print(f"{'='*60}")
     print(f"  File: {original_results['filename']}")
-    print(f"\n  📄 ORIGINAL VERSION:")
+    print(f"\n  📄 TRANSCRIPTION (Original Languages):")
     print(f"    Segments: {len(original_final)}")
     print(f"    Languages: {', '.join(languages)}")
     print(f"    Multilingual: {original_results['is_multilingual']}")
-    print(f"\n  🌐 TRANSLATED VERSION:")
+    print(f"\n  🌐 ENGLISH VERSION (Translated):")
     print(f"    Segments: {len(translated_final)}")
     print(f"    Languages: English (all translated)")
-    print(f"\nSample segments (ORIGINAL):")
+    print(f"\nSample segments (TRANSCRIPTION):")
     for seg in original_final[:3]:
         speaker = f" ({seg['speaker']})" if 'speaker' in seg else ""
         print(f"  [{seg['start']:.1f}s]{speaker} [{seg['language']}] {seg['text'][:60]}...")
-    print(f"\nSample segments (TRANSLATED):")
+    print(f"\nSample segments (ENGLISH VERSION):")
     for seg in translated_final[:3]:
         speaker = f" ({seg['speaker']})" if 'speaker' in seg else ""
         print(f"  [{seg['start']:.1f}s]{speaker} [en] {seg['text'][:60]}...")

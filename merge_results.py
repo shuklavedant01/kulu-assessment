@@ -66,9 +66,6 @@ def find_speaker_for_segment(trans_seg, diarization_segments, min_overlap_ratio=
     # If we have overlaps, use the best one
     if overlaps:
         best_match = max(overlaps, key=lambda x: x['overlap'])
-        
-        # Even if overlap is small, use it rather than "Unknown"
-        # (Better to have a guess than no speaker)
         return best_match['speaker']
     
     # No overlaps found - find nearest speaker (fallback for gaps)
@@ -77,15 +74,11 @@ def find_speaker_for_segment(trans_seg, diarization_segments, min_overlap_ratio=
     
     for diar_seg in diarization_segments:
         # Calculate distance to this segment
-        # Distance = gap between segments
         if trans_end < diar_seg['start']:
-            # Transcription is before this diarization segment
             distance = diar_seg['start'] - trans_end
         elif trans_start > diar_seg['end']:
-            # Transcription is after this diarization segment
             distance = trans_start - diar_seg['end']
         else:
-            # Should have been caught in overlap check
             distance = 0
         
         if distance < min_distance:
