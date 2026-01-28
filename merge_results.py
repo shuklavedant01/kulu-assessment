@@ -25,14 +25,15 @@ def calculate_overlap(start1, end1, start2, end2):
     return max(0, overlap_end - overlap_start)
 
 
-def find_speaker_for_segment(trans_seg, diarization_segments, min_overlap_ratio=0.5):
+def find_speaker_for_segment(trans_seg, diarization_segments, min_overlap_ratio=0.3):
     """
     Find the speaker for a transcription segment using overlap matching
+    Fallback to nearest speaker if no good overlap found
     
     Args:
         trans_seg: Transcription segment with start/end
         diarization_segments: List of diarization segments
-        min_overlap_ratio: Minimum overlap ratio required (default: 50%)
+        min_overlap_ratio: Minimum overlap ratio required (default: 30%)
     
     Returns:
         Speaker label or "Unknown"
@@ -62,18 +63,40 @@ def find_speaker_for_segment(trans_seg, diarization_segments, min_overlap_ratio=
                 'overlap_ratio': overlap / trans_duration
             })
     
-    # No overlapping speaker found
-    if not overlaps:
-        return "Unknown"
+    # If we have overlaps, use the best one
+    if overlaps:
+        best_match = max(overlaps, key=lambda x: x['overlap'])
+        
+        # Even if overlap is small, use it rather than "Unknown"
+        # (Better to have a guess than no speaker)
+        return best_match['speaker']
     
-    # Find speaker with most overlap
-    best_match = max(overlaps, key=lambda x: x['overlap'])
+    # No overlaps found - find nearest speaker (fallback for gaps)
+    nearest_speaker = None
+    min_distance = float('inf')
     
-    # Check if overlap is sufficient
-    if best_match['overlap_ratio'] < min_overlap_ratio:
-        return "Uncertain"
+    for diar_seg in diarization_segments:
+        # Calculate distance to this segment
+        # Distance = gap between segments
+        if trans_end < diar_seg['start']:
+            # Transcription is before this diarization segment
+            distance = diar_seg['start'] - trans_end
+        elif trans_start > diar_seg['end']:
+            # Transcription is after this diarization segment
+            distance = trans_start - diar_seg['end']
+        else:
+            # Should have been caught in overlap check
+            distance = 0
+        
+        if distance < min_distance:
+            min_distance = distance
+            nearest_speaker = diar_seg['speaker']
     
-    return best_match['speaker']
+    # Use nearest speaker if within 2 seconds
+    if nearest_speaker and min_distance < 2.0:
+        return nearest_speaker
+    
+    return "Unknown"
 
 
 def merge_transcription_diarization(transcription_json, diarization_json, min_overlap=0.5):
@@ -198,7 +221,11 @@ def merge_transcription_diarization(transcription_json, diarization_json, min_ov
 def save_results(results, output_path):
     """Save merged results to JSON"""
     
-    with open(output_path, 'w', encoding='utf-8') as f:
+    # Create output directory if it doesn't exist
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     
     print(f"✓ Saved to: {output_path}\n")

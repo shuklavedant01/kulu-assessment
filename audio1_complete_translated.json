@@ -1,0 +1,217 @@
+{
+  "filename": "audio1.wav",
+  "segments": [
+    {
+      "start": 2.48,
+      "end": 7.08,
+      "duration": 4.6,
+      "speaker": "Agent",
+      "text": "Hello, I'm here to help you understand our platform and answer any questions you might have.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 7.48,
+      "end": 12.0,
+      "duration": 4.52,
+      "speaker": "Agent",
+      "text": "Do you prefer a more casual onboarding or a professional onboarding?",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 12.4,
+      "end": 15.66,
+      "duration": 3.26,
+      "speaker": "Agent",
+      "text": "Also, before we dive in, could you share your screen?",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 16.04,
+      "end": 19.9,
+      "duration": 3.86,
+      "speaker": "Agent",
+      "text": "That way I can see exactly what you're looking at and guide you more effectively.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 23.92,
+      "end": 32.0,
+      "duration": 8.08,
+      "speaker": "User",
+      "text": "Before that, could you speak Russian? I really want to speak Russian and not English.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 33.74,
+      "end": 37.34,
+      "duration": 3.6,
+      "speaker": "Agent",
+      "text": "Of course, no problem. I will speak Russian with you.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 37.44,
+      "end": 45.0,
+      "duration": 7.56,
+      "speaker": "Agent",
+      "text": "So, as we agreed, before we start, please share your screen so I can see what you're doing.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 57.16,
+      "end": 60.44,
+      "duration": 3.28,
+      "speaker": "User",
+      "text": "Yes, I'm on the Meeting Links page.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 61.52,
+      "end": 68.94,
+      "duration": 7.42,
+      "speaker": "Agent",
+      "text": "Great, I see your screen. Now we will create an organization on the profile page.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 69.08,
+      "end": 74.12,
+      "duration": 5.04,
+      "speaker": "Agent",
+      "text": "First, please click on the profile button on the side panel.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 75.4,
+      "end": 77.04,
+      "duration": 1.64,
+      "speaker": "User",
+      "text": "It doesn't exist.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 77.62,
+      "end": 79.36,
+      "duration": 1.74,
+      "speaker": "User",
+      "text": "I don't have such a button.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 81.78,
+      "end": 82.36,
+      "duration": 0.58,
+      "speaker": "Unknown",
+      "text": "I see.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 88.98,
+      "end": 90.46,
+      "duration": 1.48,
+      "speaker": "Uncertain",
+      "text": "Hello? Hello?",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 92.78,
+      "end": 95.0,
+      "duration": 2.22,
+      "speaker": "Uncertain",
+      "text": "Hello, how can I help you?",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 96.82,
+      "end": 101.34,
+      "duration": 4.52,
+      "speaker": "User",
+      "text": "No, no, no, we spoke Russian. What is it? Why are you speaking English?",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 103.06,
+      "end": 105.16,
+      "duration": 2.1,
+      "speaker": "Agent",
+      "text": "Of course, we will continue in Russian.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 105.68,
+      "end": 109.34,
+      "duration": 3.66,
+      "speaker": "Agent",
+      "text": "As we agreed, the profile button on the side panel is not available.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 109.36,
+      "end": 113.1,
+      "duration": 3.74,
+      "speaker": "Agent",
+      "text": "Perhaps it's called differently.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 113.6,
+      "end": 116.96,
+      "duration": 3.36,
+      "speaker": "Agent",
+      "text": "Or maybe you are already on the profile page.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 117.02,
+      "end": 117.38,
+      "duration": 0.36,
+      "speaker": "Agent",
+      "text": "Yes, I see.",
+      "language": "en",
+      "language_name": "english"
+    }
+  ],
+  "statistics": {
+    "total_segments": 21,
+    "skipped_empty": 21,
+    "unknown_speaker": 1,
+    "agent_segments": 13,
+    "user_segments": 5,
+    "agent_speaking_time": 53.08,
+    "user_speaking_time": 19.26,
+    "agent_languages": [
+      "en"
+    ],
+    "user_languages": [
+      "en"
+    ]
+  },
+  "languages_detected": [
+    "en"
+  ],
+  "is_multilingual": false,
+  "merge_settings": {
+    "min_overlap_ratio": 0.5,
+    "method": "timestamp-overlap-matching"
+  }
+}
