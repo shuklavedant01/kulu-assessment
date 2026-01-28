@@ -1,95 +1,256 @@
 #!/usr/bin/env python3
 """
-Noise Reduction - Remove background noise using spectral subtraction
+Noise Reduction - Remove background noise using VAD + energy-based filtering
+Uses Voice Activity Detection to protect speech from being cut off
 """
 
 # Import required libraries
 import numpy as np
 from pydub import AudioSegment
-import noisereduce as nr
+import math
+import webrtcvad
+import struct
 
 
-def reduce_noise_spectral(audio_path, output_path, prop_decrease=0.8, stationary=True):
-    """
-    Apply spectral noise reduction to remove background noise
+# Function to calculate RMS energy in dBFS
+def calculate_rms_db(audio_segment):
+    """Calculate RMS (Root Mean Square) energy in dBFS"""
     
-    This method uses frequency-based noise reduction which is much better
-    at preserving soft speech compared to energy-based gating.
+    # Get audio samples as array
+    samples = np.array(audio_segment.get_array_of_samples())
+    
+    # Handle empty or silent segments
+    if len(samples) == 0 or np.all(samples == 0):
+        return -96.0  # Very quiet (near digital silence)
+    
+    # Calculate RMS
+    rms = np.sqrt(np.mean(samples.astype(float) ** 2))
+    
+    # Convert to dBFS (decibels relative to full scale)
+    # For 16-bit audio, max value is 32768
+    max_value = float(2 ** (audio_segment.sample_width * 8 - 1))
+    
+    if rms > 0:
+        dbfs = 20 * math.log10(rms / max_value)
+    else:
+        dbfs = -96.0  # Digital silence
+    
+    return dbfs
+
+
+# Function to detect speech using WebRTC VAD
+def detect_speech_segments(audio, vad_aggressiveness=1):
+    """
+    Use Voice Activity Detection to find speech segments
+    
+    Args:
+        audio: AudioSegment object
+        vad_aggressiveness: 0-3, higher = more aggressive filtering (1 = balanced)
+    
+    Returns:
+        List of tuples (start_ms, end_ms) indicating speech segments
+    """
+    
+    print(f"  Running Voice Activity Detection (aggressiveness={vad_aggressiveness})...")
+    
+    # WebRTC VAD works with specific sample rates
+    # We'll use 16kHz which is standard for speech
+    if audio.frame_rate not in [8000, 16000, 32000, 48000]:
+        audio = audio.set_frame_rate(16000)
+    
+    # VAD requires mono
+    if audio.channels > 1:
+        audio = audio.set_channels(1)
+    
+    # Initialize VAD
+    vad = webrtcvad.Vad(vad_aggressiveness)
+    
+    # Process in 30ms frames (VAD requirement)
+    frame_duration_ms = 30
+    frame_duration = int(audio.frame_rate * frame_duration_ms / 1000) * 2  # 2 bytes per sample (16-bit)
+    
+    speech_segments = []
+    is_speech_active = False
+    speech_start = 0
+    
+    # Get raw audio data
+    raw_data = audio.raw_data
+    
+    # Process each frame
+    for i in range(0, len(raw_data), frame_duration):
+        frame = raw_data[i:i + frame_duration]
+        
+        # Skip if frame is too short
+        if len(frame) < frame_duration:
+            break
+        
+        # Check if frame contains speech
+        try:
+            is_speech = vad.is_speech(frame, audio.frame_rate)
+            
+            current_time_ms = int(i / (audio.frame_rate * 2) * 1000)
+            
+            if is_speech and not is_speech_active:
+                # Speech started
+                speech_start = current_time_ms
+                is_speech_active = True
+            elif not is_speech and is_speech_active:
+                # Speech ended
+                speech_segments.append((speech_start, current_time_ms))
+                is_speech_active = False
+                
+        except Exception as e:
+            # If VAD fails on this frame, skip it
+            pass
+    
+    # Handle case where speech continues to end of audio
+    if is_speech_active:
+        speech_segments.append((speech_start, len(audio)))
+    
+    print(f"  Detected {len(speech_segments)} speech segments")
+    
+    return speech_segments
+
+
+# Function to check if timestamp is in speech segment
+def is_in_speech_segment(time_ms, speech_segments):
+    """Check if given timestamp falls within any speech segment"""
+    for start, end in speech_segments:
+        if start <= time_ms <= end:
+            return True
+    return False
+
+
+# Function to detect noise floor
+def detect_noise_floor(audio_path, chunk_duration_ms=100, percentile=15):
+    """
+    Analyze audio to find the noise floor (baseline background noise level)
+    
+    Args:
+        audio_path: Path to audio file
+        chunk_duration_ms: Size of chunks to analyze (milliseconds)
+        percentile: Percentile to use for noise floor (default 15 = bottom 15%)
+    
+    Returns:
+        noise_floor_db: Noise floor level in dBFS
+    """
+    
+    print(f"  Analyzing noise floor...")
+    
+    # Load audio
+    audio = AudioSegment.from_wav(audio_path)
+    
+    # Split into chunks
+    chunks = []
+    for i in range(0, len(audio), chunk_duration_ms):
+        chunk = audio[i:i + chunk_duration_ms]
+        if len(chunk) > 0:
+            chunks.append(chunk)
+    
+    # Calculate energy for each chunk
+    chunk_energies = []
+    for chunk in chunks:
+        energy_db = calculate_rms_db(chunk)
+        chunk_energies.append(energy_db)
+    
+    # Find noise floor (15th percentile = typical background noise)
+    noise_floor_db = np.percentile(chunk_energies, percentile)
+    
+    print(f"  Noise floor detected: {noise_floor_db:.1f} dBFS")
+    
+    return noise_floor_db
+
+
+# Function to apply VAD-protected noise gate
+def apply_noise_gate(audio_path, output_path, threshold_db=None, threshold_offset=8, vad_aggressiveness=1):
+    """
+    Apply noise gate with VAD protection - speech is NEVER cut
     
     Args:
         audio_path: Input audio file path
         output_path: Output audio file path
-        prop_decrease: Proportion of noise to reduce (0.0-1.0, default 0.8 = 80%)
-        stationary: True for constant background noise, False for changing noise
+        threshold_db: Manual threshold (dBFS). If None, auto-detect
+        threshold_offset: dB above noise floor for auto threshold (default 8)
+        vad_aggressiveness: VAD sensitivity 0-3 (1 = balanced, 3 = very aggressive)
     
     Returns:
-        None
+        threshold_used: The threshold that was applied
+        removed_percentage: Percentage of audio muted
     """
     
-    print(f"\nApplying spectral noise reduction to: {audio_path}")
+    print(f"\nApplying VAD-protected noise gate to: {audio_path}")
     
-    # Load audio using pydub
+    # Load audio
     audio = AudioSegment.from_wav(audio_path)
     
-    # Convert to numpy array
-    samples = np.array(audio.get_array_of_samples(), dtype=np.float32)
+    # Detect speech segments using VAD
+    speech_segments = detect_speech_segments(audio, vad_aggressiveness)
     
-    # If stereo, convert to mono (take first channel)
-    if audio.channels == 2:
-        samples = samples.reshape((-1, 2))
-        samples = samples[:, 0]
+    # Auto-detect threshold if not provided
+    if threshold_db is None:
+        noise_floor = detect_noise_floor(audio_path)
+        threshold_db = noise_floor + threshold_offset
+        print(f"  Auto threshold: {threshold_db:.1f} dBFS (noise floor + {threshold_offset} dB)")
+    else:
+        print(f"  Manual threshold: {threshold_db:.1f} dBFS")
     
-    # Normalize to [-1, 1] range
-    max_val = float(2 ** (audio.sample_width * 8 - 1))
-    samples = samples / max_val
+    # Process audio in chunks
+    chunk_duration_ms = 50  # 50ms chunks for smooth gating
+    processed_chunks = []
+    total_chunks = 0
+    muted_chunks = 0
+    protected_chunks = 0
     
-    print(f"  Analyzing noise profile...")
+    for i in range(0, len(audio), chunk_duration_ms):
+        chunk = audio[i:i + chunk_duration_ms]
+        
+        if len(chunk) == 0:
+            continue
+        
+        total_chunks += 1
+        current_time_ms = i
+        
+        # Check if this chunk is in a speech segment
+        is_speech = is_in_speech_segment(current_time_ms, speech_segments)
+        
+        if is_speech:
+            # ALWAYS keep speech chunks - VAD protection
+            processed_chunks.append(chunk)
+            protected_chunks += 1
+        else:
+            # Non-speech: apply energy gate
+            chunk_energy = calculate_rms_db(chunk)
+            
+            if chunk_energy < threshold_db:
+                # Below threshold - replace with silence
+                silent_chunk = AudioSegment.silent(duration=len(chunk), frame_rate=audio.frame_rate)
+                processed_chunks.append(silent_chunk)
+                muted_chunks += 1
+            else:
+                # Above threshold - keep original
+                processed_chunks.append(chunk)
     
-    # Apply spectral noise reduction
-    # The library automatically detects noise from quiet parts
-    reduced_samples = nr.reduce_noise(
-        y=samples,
-        sr=audio.frame_rate,
-        stationary=stationary,
-        prop_decrease=prop_decrease
-    )
-    
-    # Convert back to int16 and ensure proper shape
-    reduced_samples = (reduced_samples * max_val).astype(np.int16)
-    
-    # Ensure the array is C-contiguous and properly aligned
-    reduced_samples = np.ascontiguousarray(reduced_samples)
-    
-    # Create new AudioSegment from raw data
-    cleaned_audio = AudioSegment(
-        data=reduced_samples.tobytes(),
-        sample_width=audio.sample_width,
-        frame_rate=audio.frame_rate,
-        channels=1
-    )
+    # Combine processed chunks
+    if len(processed_chunks) > 0:
+        cleaned_audio = processed_chunks[0]
+        for chunk in processed_chunks[1:]:
+            cleaned_audio += chunk
+    else:
+        cleaned_audio = audio
     
     # Export cleaned audio
     cleaned_audio.export(output_path, format='wav')
     
-    print(f"  ✓ Noise reduction applied (reduced by {prop_decrease*100:.0f}%)")
-    print(f"  Saved: {output_path}\n")
-
-
-# Backward compatibility wrapper (uses spectral reduction now)
-def apply_noise_gate(audio_path, output_path, threshold_db=None, threshold_offset=8):
-    """
-    Legacy function for backward compatibility
-    Now uses spectral noise reduction instead of energy gating
+    # Calculate statistics
+    removed_percentage = (muted_chunks / total_chunks * 100) if total_chunks > 0 else 0
+    protected_percentage = (protected_chunks / total_chunks * 100) if total_chunks > 0 else 0
     
-    Args:
-        audio_path: Input audio file path
-        output_path: Output audio file path
-        threshold_db: Ignored (kept for compatibility)
-        threshold_offset: Ignored (kept for compatibility)
-    """
-    # Use default spectral reduction settings
-    reduce_noise_spectral(audio_path, output_path, prop_decrease=0.8, stationary=True)
-    return -35.0, 15.0  # Dummy values for compatibility
+    print(f"  ✓ Noise gate applied")
+    print(f"  Speech protected: {protected_percentage:.1f}% (VAD)")
+    print(f"  Noise muted: {removed_percentage:.1f}%")
+    print(f"  Saved: {output_path}\n")
+    
+    return threshold_db, removed_percentage
 
 
 # CLI interface
@@ -98,20 +259,20 @@ if __name__ == '__main__':
     from pathlib import Path
     
     parser = argparse.ArgumentParser(
-        description='Remove background noise using spectral subtraction (frequency-based)',
+        description='Remove background noise using VAD + energy-based filtering',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Auto-detect and reduce noise (80% reduction)
+  # Auto-detect threshold with VAD protection
   python noise_reduction.py -f audio.wav
   
-  # Gentle noise reduction (50%)
-  python noise_reduction.py -f audio.wav --strength 0.5
+  # Manual threshold with gentle VAD
+  python noise_reduction.py -f audio.wav -t -35 --vad 0
   
-  # Aggressive noise reduction (95%)
-  python noise_reduction.py -f audio.wav --strength 0.95
+  # Aggressive VAD (more speech protection)
+  python noise_reduction.py -f audio.wav --vad 3
   
-  # Process entire folder
+  # Process folder
   python noise_reduction.py -i outputs/converted -o outputs/cleaned
         """
     )
@@ -122,10 +283,13 @@ Examples:
                         help='Input folder with WAV files')
     parser.add_argument('-o', '--output', type=str, default='outputs/cleaned',
                         help='Output folder for cleaned files')
-    parser.add_argument('--strength', type=float, default=0.8,
-                        help='Noise reduction strength 0.0-1.0 (default: 0.8 = 80%%)')
-    parser.add_argument('--non-stationary', action='store_true',
-                        help='Use for changing/non-constant background noise')
+    parser.add_argument('-t', '--threshold', type=float,
+                        help='Manual threshold in dBFS (e.g., -35)')
+    parser.add_argument('--offset', type=float, default=8,
+                        help='Threshold offset above noise floor (default: 8 dB)')
+    parser.add_argument('--vad', type=int, default=1, choices=[0, 1, 2, 3],
+                        help='VAD aggressiveness: 0=gentle, 1=balanced (default), 2=aggressive, 3=very aggressive')
+
     
     args = parser.parse_args()
     
@@ -133,16 +297,12 @@ Examples:
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Validate strength
-    strength = max(0.0, min(1.0, args.strength))
-    stationary = not args.non_stationary
-    
     # Process single file or folder
     if args.file:
         # Single file
         input_path = Path(args.file)
         output_path = output_dir / input_path.name
-        reduce_noise_spectral(str(input_path), str(output_path), strength, stationary)
+        apply_noise_gate(str(input_path), str(output_path), args.threshold, args.offset, args.vad)
     else:
         # Batch processing
         input_dir = Path(args.input)
@@ -153,7 +313,7 @@ Examples:
         
         for audio_file in audio_files:
             output_path = output_dir / audio_file.name
-            reduce_noise_spectral(str(audio_file), str(output_path), strength, stationary)
+            apply_noise_gate(str(audio_file), str(output_path), args.threshold, args.offset, args.vad)
         
         print(f"{'='*60}")
         print(f"Noise reduction complete! Cleaned files saved to: {args.output}")
