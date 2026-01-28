@@ -181,6 +181,7 @@ def merge_with_diarization(transcribed_segments, diarization_json):
 def process_audio(audio_path, diarization_json=None, model_name='base'):
     """
     Complete timestamp-first transcription workflow
+    Generates BOTH translated and original language versions
     
     Args:
         audio_path: Path to audio file
@@ -188,50 +189,90 @@ def process_audio(audio_path, diarization_json=None, model_name='base'):
         model_name: Whisper model size
     
     Returns:
-        Complete transcription results
+        Tuple of (original_results, translated_results)
     """
     
-    # Pass 1: Get timestamps
+    # Pass 1: Get timestamps (also generates translated version)
     timestamp_segments = get_timestamps_from_whisper(audio_path, model_name)
     
-    # Pass 2: Re-transcribe each segment
+    # Save Pass 1 as translated version (Whisper translates everything to English)
+    print(f"\n💡 Pass 1 generated TRANSLATED version (all English)\n")
+    
+    translated_segments = []
+    for seg in timestamp_segments:
+        translated_segments.append({
+            'start': round(seg['start'], 3),
+            'end': round(seg['end'], 3),
+            'duration': round(seg['end'] - seg['start'], 3),
+            'text': seg['text'].strip(),
+            'language': 'en',
+            'language_name': 'english',
+            'note': 'auto-translated by Whisper'
+        })
+    
+    # Pass 2: Re-transcribe each segment (preserves original languages)
     transcribed_segments, languages = retranscribe_segments_with_language(
         audio_path, 
         timestamp_segments, 
         model_name
     )
     
-    # Optional: Merge with diarization
-    if diarization_json:
-        final_segments = merge_with_diarization(transcribed_segments, diarization_json)
-    else:
-        final_segments = transcribed_segments
+    print(f"\n💡 Pass 2 generated ORIGINAL version (preserved languages)\n")
     
-    # Build results
-    results = {
+    # Optional: Merge with diarization for both versions
+    if diarization_json:
+        original_final = merge_with_diarization(transcribed_segments, diarization_json)
+        translated_final = merge_with_diarization(translated_segments, diarization_json)
+    else:
+        original_final = transcribed_segments
+        translated_final = translated_segments
+    
+    # Build results for ORIGINAL version
+    original_results = {
         'filename': Path(audio_path).name,
-        'segments': final_segments,
+        'segments': original_final,
         'languages_detected': languages,
         'is_multilingual': len(languages) > 1,
         'model_used': model_name,
-        'method': 'timestamp-first-retranscription'
+        'method': 'timestamp-first-retranscription',
+        'version': 'original'
+    }
+    
+    # Build results for TRANSLATED version
+    translated_results = {
+        'filename': Path(audio_path).name,
+        'segments': translated_final,
+        'languages_detected': ['en'],
+        'is_multilingual': False,
+        'model_used': model_name,
+        'method': 'timestamp-first-translation',
+        'version': 'translated',
+        'note': 'All segments translated to English by Whisper'
     }
     
     # Print summary
     print(f"{'='*60}")
-    print(f"Transcription Complete!")
+    print(f"Transcription Complete - DUAL OUTPUT")
     print(f"{'='*60}")
-    print(f"  File: {results['filename']}")
-    print(f"  Segments: {len(final_segments)}")
-    print(f"  Languages: {', '.join(languages)}")
-    print(f"  Multilingual: {results['is_multilingual']}")
-    print(f"\nSample segments:")
-    for seg in final_segments[:3]:
+    print(f"  File: {original_results['filename']}")
+    print(f"\n  📄 ORIGINAL VERSION:")
+    print(f"    Segments: {len(original_final)}")
+    print(f"    Languages: {', '.join(languages)}")
+    print(f"    Multilingual: {original_results['is_multilingual']}")
+    print(f"\n  🌐 TRANSLATED VERSION:")
+    print(f"    Segments: {len(translated_final)}")
+    print(f"    Languages: English (all translated)")
+    print(f"\nSample segments (ORIGINAL):")
+    for seg in original_final[:3]:
         speaker = f" ({seg['speaker']})" if 'speaker' in seg else ""
-        print(f"  [{seg['start']:.1f}s]{speaker} [{seg['language']}] {seg['text'][:80]}...")
+        print(f"  [{seg['start']:.1f}s]{speaker} [{seg['language']}] {seg['text'][:60]}...")
+    print(f"\nSample segments (TRANSLATED):")
+    for seg in translated_final[:3]:
+        speaker = f" ({seg['speaker']})" if 'speaker' in seg else ""
+        print(f"  [{seg['start']:.1f}s]{speaker} [en] {seg['text'][:60]}...")
     print(f"{'='*60}\n")
     
-    return results
+    return original_results, translated_results
 
 
 def save_results(results, output_path):
@@ -274,16 +315,25 @@ Examples:
     
     args = parser.parse_args()
     
-    # Process
-    results = process_audio(args.file, args.diarization, args.model)
+    # Process - returns both versions
+    original_results, translated_results = process_audio(args.file, args.diarization, args.model)
     
     # Save with organized structure
     if args.output:
-        output_path = args.output
+        # User specified output - save original there
+        original_path = args.output
+        translated_path = Path(args.output).stem + '_translated.json'
     else:
-        # Default: outputs/transcription/<filename>_timestamp_transcription.json
+        # Default: outputs/transcription/<filename>_*.json
         output_dir = Path('outputs/transcription')
         output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"{Path(args.file).stem}_timestamp_transcription.json"
+        original_path = output_dir / f"{Path(args.file).stem}_timestamp_transcription.json"
+        translated_path = output_dir / f"{Path(args.file).stem}_timestamp_transcription_translated.json"
     
-    save_results(results, output_path)
+    # Save both versions
+    save_results(original_results, original_path)
+    save_results(translated_results, translated_path)
+    
+    print(f"✅ Generated TWO versions:")
+    print(f"   📄 Original: {original_path}")
+    print(f"   🌐 Translated: {translated_path}\n")
