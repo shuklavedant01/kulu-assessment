@@ -29,44 +29,49 @@ def transcribe_audio(audio_path, model_name='base', language=None):
     # Load Whisper model
     model = whisper.load_model(model_name)
     
-    # Transcribe audio
-    print(f"Processing audio...")
+    # Transcribe audio WITHOUT forcing language to avoid translation
+    print(f"Processing audio (multilingual mode)...")
+    
     result = model.transcribe(
         str(audio_path),
-        language=language,
-        word_timestamps=True,  # Enable word-level timestamps
-        verbose=False
+        task='transcribe',  # Keep original language (don't translate)
+        word_timestamps=True,
+        verbose=False,
+        language=None  # CRITICAL: Allow multi-language detection
     )
     
     # Extract language information
     detected_language = result.get('language', 'unknown')
     language_name = whisper.tokenizer.LANGUAGES.get(detected_language, detected_language)
     
-    print(f"  Language detected: {language_name} ({detected_language})")
+    print(f"  Primary language: {language_name}")
     print(f"  Transcription complete!")
     
-    # Process segments with timestamps
+    # Process segments with timestamps and detect languages per segment
     segments = []
+    languages_in_segments = set()
+    
     for segment in result['segments']:
+        seg_lang = segment.get('language', detected_language)
+        languages_in_segments.add(seg_lang)
+        
         segments.append({
             'start': round(segment['start'], 3),
             'end': round(segment['end'], 3),
             'duration': round(segment['end'] - segment['start'], 3),
             'text': segment['text'].strip(),
-            'language': detected_language
+            'language': seg_lang
         })
     
-    # Collect all unique languages (for code-switching detection)
-    languages_used = set()
-    if 'segments' in result:
-        for segment in result['segments']:
-            if 'language' in segment:
-                languages_used.add(segment.get('language', detected_language))
-    if not languages_used:
-        languages_used.add(detected_language)
-    
-    # Check if multiple languages were used
+    # Determine if multilingual based on actual segments
+    languages_used = list(languages_in_segments) if languages_in_segments else [detected_language]
     is_multilingual = len(languages_used) > 1
+    
+    if is_multilingual:
+        print(f"  ✓ Multilingual audio detected: {', '.join(languages_used)}")
+    else:
+        print(f"  Single language: {language_name}")
+
     
     return {
         'filename': Path(audio_path).name,
