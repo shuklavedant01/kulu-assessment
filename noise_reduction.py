@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Noise Reduction - Remove background noise using VAD + energy-based filtering
-Uses Voice Activity Detection to protect speech from being cut off
+Noise Reduction - Remove background noise using noise profiling
+Analyzes first segment before speech to capture noise characteristics
 """
 
 # Import required libraries
 import numpy as np
 from pydub import AudioSegment
 import math
-import webrtcvad
-import struct
 
 
 # Function to calculate RMS energy in dBFS
@@ -38,168 +36,148 @@ def calculate_rms_db(audio_segment):
     return dbfs
 
 
-# Function to detect speech using WebRTC VAD
-def detect_speech_segments(audio, vad_aggressiveness=1):
+# Function to detect first speech spike
+def detect_first_speech_spike(audio, chunk_duration_ms=100, spike_threshold_increase=10):
     """
-    Use Voice Activity Detection to find speech segments
+    Find the first major spike in audio (where clear speech starts)
     
     Args:
         audio: AudioSegment object
-        vad_aggressiveness: 0-3, higher = more aggressive filtering (1 = balanced)
+        chunk_duration_ms: Size of chunks to analyze
+        spike_threshold_increase: dB increase from baseline to consider a spike
     
     Returns:
-        List of tuples (start_ms, end_ms) indicating speech segments
+        spike_position_ms: Position where first spike occurs (in milliseconds)
     """
     
-    print(f"  Running Voice Activity Detection (aggressiveness={vad_aggressiveness})...")
+    # Analyze first part of audio to find baseline
+    baseline_chunks = []
+    for i in range(0, min(3000, len(audio)), chunk_duration_ms):
+        chunk = audio[i:i + chunk_duration_ms]
+        if len(chunk) > 0:
+            baseline_chunks.append(calculate_rms_db(chunk))
     
-    # WebRTC VAD works with specific sample rates
-    # We'll use 16kHz which is standard for speech
-    if audio.frame_rate not in [8000, 16000, 32000, 48000]:
-        audio = audio.set_frame_rate(16000)
+    if not baseline_chunks:
+        return 0
     
-    # VAD requires mono
-    if audio.channels > 1:
-        audio = audio.set_channels(1)
+    # Find median of first 3 seconds as baseline
+    baseline_energy = np.median(baseline_chunks)
     
-    # Initialize VAD
-    vad = webrtcvad.Vad(vad_aggressiveness)
-    
-    # Process in 30ms frames (VAD requirement)
-    frame_duration_ms = 30
-    frame_duration = int(audio.frame_rate * frame_duration_ms / 1000) * 2  # 2 bytes per sample (16-bit)
-    
-    speech_segments = []
-    is_speech_active = False
-    speech_start = 0
-    
-    # Get raw audio data
-    raw_data = audio.raw_data
-    
-    # Process each frame
-    for i in range(0, len(raw_data), frame_duration):
-        frame = raw_data[i:i + frame_duration]
-        
-        # Skip if frame is too short
-        if len(frame) < frame_duration:
-            break
-        
-        # Check if frame contains speech
-        try:
-            is_speech = vad.is_speech(frame, audio.frame_rate)
+    # Now scan for first major spike
+    for i in range(0, len(audio), chunk_duration_ms):
+        chunk = audio[i:i + chunk_duration_ms]
+        if len(chunk) > 0:
+            chunk_energy = calculate_rms_db(chunk)
             
-            current_time_ms = int(i / (audio.frame_rate * 2) * 1000)
-            
-            if is_speech and not is_speech_active:
-                # Speech started
-                speech_start = current_time_ms
-                is_speech_active = True
-            elif not is_speech and is_speech_active:
-                # Speech ended
-                speech_segments.append((speech_start, current_time_ms))
-                is_speech_active = False
-                
-        except Exception as e:
-            # If VAD fails on this frame, skip it
-            pass
+            # Check if this is a significant spike above baseline
+            if chunk_energy > baseline_energy + spike_threshold_increase:
+                print(f"  First speech spike detected at: {i/1000:.2f}s (energy: {chunk_energy:.1f} dBFS)")
+                return i
     
-    # Handle case where speech continues to end of audio
-    if is_speech_active:
-        speech_segments.append((speech_start, len(audio)))
-    
-    print(f"  Detected {len(speech_segments)} speech segments")
-    
-    return speech_segments
+    # If no spike found, assume speech starts at 2 seconds
+    print(f"  No clear spike detected, using default 2s")
+    return 2000
 
 
-# Function to check if timestamp is in speech segment
-def is_in_speech_segment(time_ms, speech_segments):
-    """Check if given timestamp falls within any speech segment"""
-    for start, end in speech_segments:
-        if start <= time_ms <= end:
-            return True
-    return False
-
-
-# Function to detect noise floor
-def detect_noise_floor(audio_path, chunk_duration_ms=100, percentile=15):
+# Function to profile noise from initial segment
+def profile_noise_from_initial_segment(audio_path, profile_duration_ms=None, buffer_db=3):
     """
-    Analyze audio to find the noise floor (baseline background noise level)
+    Analyze audio before first speech spike to create noise profile
     
     Args:
         audio_path: Path to audio file
-        chunk_duration_ms: Size of chunks to analyze (milliseconds)
-        percentile: Percentile to use for noise floor (default 15 = bottom 15%)
+        profile_duration_ms: How much audio to use (None = auto-detect from spike)
+        buffer_db: dB to add above noise ceiling (default 3)
     
     Returns:
-        noise_floor_db: Noise floor level in dBFS
+        threshold_db: Recommended threshold based on noise profile
+        noise_ceiling_db: Maximum noise level detected
+        profile_duration: Duration of noise profile used
     """
     
-    print(f"  Analyzing noise floor...")
+    print(f"  Creating noise profile from initial segment...")
     
     # Load audio
     audio = AudioSegment.from_wav(audio_path)
     
-    # Split into chunks
-    chunks = []
-    for i in range(0, len(audio), chunk_duration_ms):
-        chunk = audio[i:i + chunk_duration_ms]
+    # Auto-detect profile duration if not specified
+    if profile_duration_ms is None:
+        spike_position = detect_first_speech_spike(audio)
+        # Use everything before spike, or minimum 1 second
+        profile_duration_ms = max(1000, spike_position - 200)  # 200ms before spike
+    
+    # Extract noise profile segment
+    noise_segment = audio[:profile_duration_ms]
+    
+    # Analyze noise segment in small chunks
+    chunk_duration_ms = 50
+    noise_energies = []
+    
+    for i in range(0, len(noise_segment), chunk_duration_ms):
+        chunk = noise_segment[i:i + chunk_duration_ms]
         if len(chunk) > 0:
-            chunks.append(chunk)
+            energy = calculate_rms_db(chunk)
+            noise_energies.append(energy)
     
-    # Calculate energy for each chunk
-    chunk_energies = []
-    for chunk in chunks:
-        energy_db = calculate_rms_db(chunk)
-        chunk_energies.append(energy_db)
+    if not noise_energies:
+        print(f"  Warning: Could not analyze noise, using default threshold")
+        return -40.0, -50.0, profile_duration_ms
     
-    # Find noise floor (15th percentile = typical background noise)
-    noise_floor_db = np.percentile(chunk_energies, percentile)
+    # Find noise characteristics
+    noise_floor = np.percentile(noise_energies, 10)  # Quietest parts
+    noise_ceiling = np.percentile(noise_energies, 90)  # Loudest noise parts
+    noise_max = np.max(noise_energies)  # Absolute maximum
     
-    print(f"  Noise floor detected: {noise_floor_db:.1f} dBFS")
+    # Set threshold slightly above the noisiest parts
+    threshold_db = noise_max + buffer_db
     
-    return noise_floor_db
+    print(f"  Noise profile duration: {profile_duration_ms/1000:.2f}s")
+    print(f"  Noise floor: {noise_floor:.1f} dBFS")
+    print(f"  Noise ceiling: {noise_ceiling:.1f} dBFS")
+    print(f"  Noise max: {noise_max:.1f} dBFS")
+    print(f"  Threshold set to: {threshold_db:.1f} dBFS (noise max + {buffer_db} dB)")
+    
+    return threshold_db, noise_ceiling, profile_duration_ms
 
 
-# Function to apply VAD-protected noise gate
-def apply_noise_gate(audio_path, output_path, threshold_db=None, threshold_offset=8, vad_aggressiveness=1):
+# Function to apply noise gate
+def apply_noise_gate(audio_path, output_path, threshold_db=None, buffer_db=3, manual_profile_duration=None):
     """
-    Apply noise gate with VAD protection - speech is NEVER cut
+    Apply noise gate using noise profiling from initial segment
     
     Args:
         audio_path: Input audio file path
         output_path: Output audio file path
-        threshold_db: Manual threshold (dBFS). If None, auto-detect
-        threshold_offset: dB above noise floor for auto threshold (default 8)
-        vad_aggressiveness: VAD sensitivity 0-3 (1 = balanced, 3 = very aggressive)
+        threshold_db: Manual threshold (dBFS). If None, auto-detect from noise profile
+        buffer_db: dB buffer above noise ceiling (default 3)
+        manual_profile_duration: Manual profile duration in seconds (None = auto-detect)
     
     Returns:
         threshold_used: The threshold that was applied
         removed_percentage: Percentage of audio muted
     """
     
-    print(f"\nApplying VAD-protected noise gate to: {audio_path}")
+    print(f"\nApplying noise-profiled gate to: {audio_path}")
     
     # Load audio
     audio = AudioSegment.from_wav(audio_path)
     
-    # Detect speech segments using VAD
-    speech_segments = detect_speech_segments(audio, vad_aggressiveness)
-    
-    # Auto-detect threshold if not provided
+    # Create noise profile if threshold not manually specified
     if threshold_db is None:
-        noise_floor = detect_noise_floor(audio_path)
-        threshold_db = noise_floor + threshold_offset
-        print(f"  Auto threshold: {threshold_db:.1f} dBFS (noise floor + {threshold_offset} dB)")
+        profile_duration_ms = manual_profile_duration * 1000 if manual_profile_duration else None
+        threshold_db, noise_ceiling, profile_duration = profile_noise_from_initial_segment(
+            audio_path, 
+            profile_duration_ms, 
+            buffer_db
+        )
     else:
-        print(f"  Manual threshold: {threshold_db:.1f} dBFS")
+        print(f"  Using manual threshold: {threshold_db:.1f} dBFS")
     
     # Process audio in chunks
     chunk_duration_ms = 50  # 50ms chunks for smooth gating
     processed_chunks = []
     total_chunks = 0
     muted_chunks = 0
-    protected_chunks = 0
     
     for i in range(0, len(audio), chunk_duration_ms):
         chunk = audio[i:i + chunk_duration_ms]
@@ -208,27 +186,19 @@ def apply_noise_gate(audio_path, output_path, threshold_db=None, threshold_offse
             continue
         
         total_chunks += 1
-        current_time_ms = i
         
-        # Check if this chunk is in a speech segment
-        is_speech = is_in_speech_segment(current_time_ms, speech_segments)
+        # Calculate chunk energy
+        chunk_energy = calculate_rms_db(chunk)
         
-        if is_speech:
-            # ALWAYS keep speech chunks - VAD protection
-            processed_chunks.append(chunk)
-            protected_chunks += 1
+        # Apply gate
+        if chunk_energy < threshold_db:
+            # Below threshold - replace with silence
+            silent_chunk = AudioSegment.silent(duration=len(chunk), frame_rate=audio.frame_rate)
+            processed_chunks.append(silent_chunk)
+            muted_chunks += 1
         else:
-            # Non-speech: apply energy gate
-            chunk_energy = calculate_rms_db(chunk)
-            
-            if chunk_energy < threshold_db:
-                # Below threshold - replace with silence
-                silent_chunk = AudioSegment.silent(duration=len(chunk), frame_rate=audio.frame_rate)
-                processed_chunks.append(silent_chunk)
-                muted_chunks += 1
-            else:
-                # Above threshold - keep original
-                processed_chunks.append(chunk)
+            # Above threshold - keep original
+            processed_chunks.append(chunk)
     
     # Combine processed chunks
     if len(processed_chunks) > 0:
@@ -243,11 +213,9 @@ def apply_noise_gate(audio_path, output_path, threshold_db=None, threshold_offse
     
     # Calculate statistics
     removed_percentage = (muted_chunks / total_chunks * 100) if total_chunks > 0 else 0
-    protected_percentage = (protected_chunks / total_chunks * 100) if total_chunks > 0 else 0
     
     print(f"  ✓ Noise gate applied")
-    print(f"  Speech protected: {protected_percentage:.1f}% (VAD)")
-    print(f"  Noise muted: {removed_percentage:.1f}%")
+    print(f"  Muted: {removed_percentage:.1f}% of audio")
     print(f"  Saved: {output_path}\n")
     
     return threshold_db, removed_percentage
@@ -259,18 +227,21 @@ if __name__ == '__main__':
     from pathlib import Path
     
     parser = argparse.ArgumentParser(
-        description='Remove background noise using VAD + energy-based filtering',
+        description='Remove background noise using intelligent noise profiling',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Auto-detect threshold with VAD protection
+  # Auto-detect noise from beginning (RECOMMENDED)
   python noise_reduction.py -f audio.wav
   
-  # Manual threshold with gentle VAD
-  python noise_reduction.py -f audio.wav -t -35 --vad 0
+  # Manual threshold
+  python noise_reduction.py -f audio.wav -t -35
   
-  # Aggressive VAD (more speech protection)
-  python noise_reduction.py -f audio.wav --vad 3
+  # Custom buffer (more/less aggressive)
+  python noise_reduction.py -f audio.wav --buffer 5
+  
+  # Specify noise profile duration manually
+  python noise_reduction.py -f audio.wav --profile 3
   
   # Process folder
   python noise_reduction.py -i outputs/converted -o outputs/cleaned
@@ -285,10 +256,10 @@ Examples:
                         help='Output folder for cleaned files')
     parser.add_argument('-t', '--threshold', type=float,
                         help='Manual threshold in dBFS (e.g., -35)')
-    parser.add_argument('--offset', type=float, default=8,
-                        help='Threshold offset above noise floor (default: 8 dB)')
-    parser.add_argument('--vad', type=int, default=1, choices=[0, 1, 2, 3],
-                        help='VAD aggressiveness: 0=gentle, 1=balanced (default), 2=aggressive, 3=very aggressive')
+    parser.add_argument('--buffer', type=float, default=3,
+                        help='dB buffer above noise max (default: 3 dB)')
+    parser.add_argument('--profile', type=float,
+                        help='Noise profile duration in seconds (default: auto-detect from first spike)')
 
     
     args = parser.parse_args()
@@ -302,7 +273,7 @@ Examples:
         # Single file
         input_path = Path(args.file)
         output_path = output_dir / input_path.name
-        apply_noise_gate(str(input_path), str(output_path), args.threshold, args.offset, args.vad)
+        apply_noise_gate(str(input_path), str(output_path), args.threshold, args.buffer, args.profile)
     else:
         # Batch processing
         input_dir = Path(args.input)
@@ -313,7 +284,7 @@ Examples:
         
         for audio_file in audio_files:
             output_path = output_dir / audio_file.name
-            apply_noise_gate(str(audio_file), str(output_path), args.threshold, args.offset, args.vad)
+            apply_noise_gate(str(audio_file), str(output_path), args.threshold, args.buffer, args.profile)
         
         print(f"{'='*60}")
         print(f"Noise reduction complete! Cleaned files saved to: {args.output}")

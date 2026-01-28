@@ -15,7 +15,6 @@ from pyannote.audio import Pipeline
 # Read from environment variable or use provided token
 
 
-
 # Optional: Import noise reduction (if available)
 try:
     from noise_reduction import apply_noise_gate
