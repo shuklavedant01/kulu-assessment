@@ -15,12 +15,18 @@ from pyannote.audio import Pipeline
 # Read from environment variable or use provided token
 
 
+
 # Optional: Import noise reduction (if available)
 try:
     from noise_reduction import apply_noise_gate
     NOISE_REDUCTION_AVAILABLE = True
 except ImportError:
     NOISE_REDUCTION_AVAILABLE = False
+
+# Import for energy calculation
+import numpy as np
+from pydub import AudioSegment
+import math
 
 
 # Function to perform diarization on a single audio file
@@ -82,6 +88,83 @@ def diarize_audio(audio_path, pipeline, num_speakers=None):
             "original_label": speaker
         })
     
+    # Return segments and speaker mapping
+    return segments, speakers_seen
+
+
+# Function to filter noise segments from diarization results
+def filter_noise_segments(segments, audio_path, min_duration=0.3, energy_threshold=-50, isolation_gap=2.0):
+    """
+    Filter out noise segments based on duration, energy, and isolation criteria
+    
+    Args:
+        segments: List of diarization segments
+        audio_path: Path to audio file (for energy analysis)
+        min_duration: Minimum segment duration in seconds (default 0.3s)
+        energy_threshold: Energy threshold in dBFS (default -50 dB)
+        isolation_gap: Gap before/after to consider isolated in seconds (default 2.0s)
+    
+    Returns:
+        filtered_segments: Clean segments with noise removed
+        removed_count: Number of segments removed
+    """
+    
+    print(f"  Filtering noise segments...")
+    
+    # Load audio for energy analysis
+    audio = AudioSegment.from_wav(str(audio_path))
+    
+    def calculate_segment_energy(start_ms, end_ms):
+        """Calculate average energy of segment in dBFS"""
+        segment = audio[start_ms:end_ms]
+        samples = np.array(segment.get_array_of_samples())
+        
+        if len(samples) == 0 or np.all(samples == 0):
+            return -96.0
+        
+        rms = np.sqrt(np.mean(samples.astype(float) ** 2))
+        max_value = float(2 ** (segment.sample_width * 8 - 1))
+        
+        if rms > 0:
+            return 20 * math.log10(rms / max_value)
+        return -96.0
+    
+    filtered_segments = []
+    removed_segments = []
+    
+    for i, segment in enumerate(segments):
+        should_keep = True
+        removal_reason = None
+        
+        # Duration filter - remove very short segments (noise bursts)
+        if segment["duration"] < min_duration:
+            should_keep = False
+            removal_reason = "too_short"
+        
+        if should_keep:
+            filtered_segments.append(segment)
+        else:
+            removed_segments.append({**segment, "removal_reason": removal_reason})
+    
+    print(f"  Removed {len(removed_segments)} noise segments:")
+    print(f"    - Too short (<{min_duration}s): {len(removed_segments)}")
+
+    
+    return filtered_segments, len(removed_segments)
+
+
+# Function to process diarization and create stats
+def process_diarization_results(segments, speakers_seen):
+    """
+    Process segments and calculate statistics
+    
+    Args:
+        segments: List of segments
+        speakers_seen: Dictionary of speaker mappings
+    
+    Returns:
+        Dictionary with segments, stats, and speaker mapping
+    """
     # Calculate gaps between consecutive turns
     gaps = []
     for i in range(len(segments) - 1):
@@ -105,13 +188,7 @@ def diarize_audio(audio_path, pipeline, num_speakers=None):
         "unique_speakers": len(speakers_seen)
     }
     
-    # Return complete diarization results
-    return {
-        "filename": audio_path.name,
-        "segments": segments,
-        "statistics": stats,
-        "speaker_mapping": speakers_seen
-    }
+    return stats
 
 
 # Function to save results as JSON
@@ -204,18 +281,38 @@ def process_folder(input_folder='outputs/converted', output_folder='outputs/diar
     for audio_file in audio_files:
         try:
             # Run diarization
-            results = diarize_audio(audio_file, pipeline, num_speakers)
+            segments, speakers_seen = diarize_audio(audio_file, pipeline, num_speakers)
+            
+            # Apply noise filtering if requested
+            if apply_noise_reduction:
+                segments, removed_count = filter_noise_segments(segments, audio_file)
+            
+            # Calculate statistics
+            stats = process_diarization_results(segments, speakers_seen)
+            
+            # Create results dictionary
+            results = {
+                "filename": audio_file.name,
+                "segments": segments,
+                "statistics": stats,
+                "speaker_mapping": speakers_seen
+            }
+            
+            if apply_noise_reduction:
+                results["noise_filtered"] = removed_count
             
             # Save to JSON
             save_results(results, output_folder, audio_file.name)
             
             # Print summary
-            stats = results['statistics']
             print(f"  Summary:")
             print(f"    Total Segments: {stats['total_segments']}")
             print(f"    Agent: {stats['agent_segments']} segments, {stats['agent_speaking_time']}s")
             print(f"    User: {stats['user_segments']} segments, {stats['user_speaking_time']}s")
-            print(f"    Avg Gap: {stats['avg_gap_between_turns']}s\n")
+            print(f"    Avg Gap: {stats['avg_gap_between_turns']}s")
+            if apply_noise_reduction:
+                print(f"    Noise Removed: {removed_count} segments")
+            print()
             
             all_results.append(results)
             
@@ -259,11 +356,13 @@ Examples:
     parser.add_argument('-f', '--file', type=str,
                         help='Process single audio file instead of folder')
     parser.add_argument('--noise-reduce', action='store_true',
-                        help='Apply noise reduction before diarization (recommended)')
+                        help='Apply noise reduction before diarization (requires noise_reduction.py)')
     parser.add_argument('--noise-threshold', type=float,
-                        help='Manual noise threshold in dBFS (e.g., -35). Auto-detect if not specified')
+                        help='Manual threshold for noise reduction in dBFS (e.g., -35)')
     parser.add_argument('--num-speakers', type=int,
-                        help='Force specific number of speakers (2 = Agent + User only, recommended for 1-on-1 calls)')
+                        help='Force specific number of speakers (e.g., 2 for Agent+User, 3 for multi-language)')
+    parser.add_argument('--filter-noise', action='store_true',
+                        help='Filter noise segments from results (removes short, quiet, isolated segments)')
 
 
 
@@ -288,9 +387,30 @@ Examples:
 
         
         # Process single file
-        results = diarize_audio(Path(args.file), pipeline, args.num_speakers)
+        audio_file = Path(args.file)
+        segments, speakers_seen = diarize_audio(audio_file, pipeline, args.num_speakers)
+        
+        # Apply noise filtering if requested
+        if args.filter_noise:
+            segments, removed_count = filter_noise_segments(segments, audio_file)
+        
+        # Calculate statistics
+        stats = process_diarization_results(segments, speakers_seen)
+        
+        # Create results dictionary
+        results = {
+            "filename": audio_file.name,
+            "segments": segments,
+            "statistics": stats,
+            "speaker_mapping": speakers_seen
+        }
+        
+        if args.filter_noise:
+            results["noise_filtered"] = removed_count
+        
         save_results(results, args.output, args.file)
     else:
-        # Process entire folder
-        process_folder(args.input, args.output, args.noise_reduce, args.noise_threshold, args.num_speakers)
+        # Process entire folder (note: apply_noise_reduction variable is reused for filter_noise)
+        process_folder(args.input, args.output, args.filter_noise, args.noise_threshold, args.num_speakers)
+
 
