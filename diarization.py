@@ -16,6 +16,7 @@ from pyannote.audio import Pipeline
 
 
 
+
 # Optional: Import noise reduction (if available)
 try:
     from noise_reduction import apply_noise_gate
@@ -27,6 +28,122 @@ except ImportError:
 import numpy as np
 from pydub import AudioSegment
 import math
+
+
+def detect_multilingual_and_assign_speakers(segments, transcription_file=None):
+    """
+    Intelligently assign Agent/User labels based on language detection
+    
+    Logic:
+    - If 2 speakers: First = Agent, Second = User
+    - If 3 speakers + multilingual: Third speaker = Agent (multilingual)
+    - If transcription available, use language data for smarter assignment
+    
+    Args:
+        segments: Diarization segments with SPEAKER_XX labels
+        transcription_file: Optional path to transcription JSON with language data
+    
+    Returns:
+        segments: Segments with Agent/User labels
+        mapping: Speaker mapping dictionary
+    """
+    
+    # Count unique speakers
+    speakers = set([seg['speaker'] for seg in segments])
+    num_speakers = len(speakers)
+    
+    print(f"  Detected {num_speakers} speakers: {speakers}")
+    
+    # Default mapping (2 speakers)
+    mapping = {}
+    if num_speakers == 2:
+        speakers_list = sorted(list(speakers))
+        mapping = {
+            speakers_list[0]: 'Agent',
+            speakers_list[1]: 'User'
+        }
+        print(f"  Using default 2-speaker mapping: {mapping}")
+    
+    # 3-speaker handling with multilingual detection
+    elif num_speakers >= 3 and transcription_file:
+        try:
+            with open(transcription_file, 'r', encoding='utf-8') as f:
+                trans_data = json.load(f)
+            
+            # Detect languages per speaker
+            speaker_languages = {}
+            for seg in trans_data.get('segments', []):
+                speaker = seg.get('speaker', 'unknown')
+                lang = seg.get('language', 'unknown')
+                
+                if speaker not in speaker_languages:
+                    speaker_languages[speaker] = set()
+                speaker_languages[speaker].add(lang)
+            
+            # Check if multilingual
+            all_languages = set()
+            for langs in speaker_languages.values():
+                all_languages.update(langs)
+            
+            is_multilingual = len(all_languages) > 1
+            
+            if is_multilingual:
+                # Find which speaker speaks multiple languages (Agent)
+                multilingual_speaker = None
+                for speaker, langs in speaker_languages.items():
+                    if len(langs) > 1:
+                        multilingual_speaker = speaker
+                        break
+                
+                # If no clear multilingual speaker, use 3rd speaker as Agent
+                speakers_list = sorted(list(speakers))
+                if multilingual_speaker and multilingual_speaker in speakers_list:
+                    mapping[multilingual_speaker] = 'Agent'
+                    # Others are Users
+                    user_num = 1
+                    for sp in speakers_list:
+                        if sp != multilingual_speaker:
+                            mapping[sp] = f'User{user_num}'
+                            user_num += 1
+                else:
+                    # Default: 3rd speaker is Agent
+                    mapping[speakers_list[0]] = 'User1'
+                    mapping[speakers_list[1]] = 'User2'
+                    mapping[speakers_list[2]] = 'Agent'
+                
+                print(f"  Multilingual detected! Languages: {all_languages}")
+                print(f"  Using 3-speaker multilingual mapping: {mapping}")
+            else:
+                # Not multilingual, use default
+                speakers_list = sorted(list(speakers))
+                mapping[speakers_list[0]] = 'Agent'
+                for i, sp in enumerate(speakers_list[1:], 1):
+                    mapping[sp] = f'User{i}'
+                print(f"  Using default 3-speaker mapping: {mapping}")
+        
+        except Exception as e:
+            print(f"  Warning: Could not read transcription file: {e}")
+            print(f"  Using default mapping")
+            speakers_list = sorted(list(speakers))
+            mapping[speakers_list[0]] = 'Agent'
+            for i, sp in enumerate(speakers_list[1:], 1):
+                mapping[sp] = f'User{i}'
+    
+    else:
+        # Fallback for 3+ speakers without transcription
+        speakers_list = sorted(list(speakers))
+        mapping[speakers_list[0]] = 'Agent'
+        for i, sp in enumerate(speakers_list[1:], 1):
+            mapping[sp] = f'User{i}'
+        print(f"  Using default {num_speakers}-speaker mapping: {mapping}")
+    
+    # Apply mapping to segments
+    for seg in segments:
+        seg['speaker'] = mapping.get(seg['speaker'], seg['speaker'])
+    
+    return segments, mapping
+
+
 
 
 # Function to perform diarization on a single audio file
@@ -361,6 +478,8 @@ Examples:
                         help='Manual threshold for noise reduction in dBFS (e.g., -35)')
     parser.add_argument('--num-speakers', type=int,
                         help='Force specific number of speakers (e.g., 2 for Agent+User, 3 for multi-language)')
+    parser.add_argument('--transcription', '-t', type=str, default=None,
+                        help='Path to transcription JSON for intelligent speaker labeling')
     parser.add_argument('--filter-noise', action='store_true',
                         help='Filter noise segments from results (removes short, quiet, isolated segments)')
 
@@ -394,8 +513,14 @@ Examples:
         if args.filter_noise:
             segments, removed_count = filter_noise_segments(segments, audio_file)
         
+        # Intelligently assign Agent/User labels
+        segments, speaker_mapping = detect_multilingual_and_assign_speakers(
+            segments, 
+            args.transcription
+        )
+        
         # Calculate statistics
-        stats = process_diarization_results(segments, speakers_seen)
+        stats = process_diarization_results(segments, speaker_mapping)
         
         # Create results dictionary
         results = {
