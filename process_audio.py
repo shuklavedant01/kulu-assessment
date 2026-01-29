@@ -38,10 +38,14 @@ def detect_languages_in_transcription(transcription_file):
 
 
 
-def process_audio(audio_file, source_lang='pl', target_lang='en'):
+def process_audio(audio_file, whisper_model='large'):
     """
     Run complete pipeline for a single audio file
     All outputs go to outputs/{audio_name}/
+    
+    Args:
+        audio_file: Path to audio file
+        whisper_model: Whisper model size (tiny/base/small/medium/large)
     """
     
     audio_path = Path(audio_file)
@@ -66,15 +70,43 @@ def process_audio(audio_file, source_lang='pl', target_lang='en'):
     cutouts_dir.mkdir(exist_ok=True)
     latency_dir.mkdir(exist_ok=True)
     
-    # Step 1: Convert to WAV
+    # Step 1: Convert to WAV (using pydub directly)
     print("STEP 1: Converting to WAV (16kHz mono)")
     print("-"*70)
-    cmd = [
-        'python', 'audio_converter.py',
-        '--input', str(audio_path),
-        '--output', str(wav_file)
-    ]
-    subprocess.run(cmd, check=True)
+    
+    try:
+        from pydub import AudioSegment
+        import shutil
+        
+        # Clean up if wav_file exists as directory (from old audio_converter bug)
+        if wav_file.exists() and wav_file.is_dir():
+            print(f"  Removing corrupted directory: {wav_file}")
+            shutil.rmtree(wav_file)
+        
+        # Load audio
+        print(f"Loading: {audio_path.name}...")
+        audio = AudioSegment.from_file(str(audio_path))
+        
+        # Convert to mono if needed
+        if audio.channels > 1:
+            print(f"  Converting {audio.channels} channels → 1 (mono)")
+            audio = audio.set_channels(1)
+        
+        # Resample to 16kHz
+        if audio.frame_rate != 16000:
+            print(f"  Resampling {audio.frame_rate}Hz → 16000Hz")
+            audio = audio.set_frame_rate(16000)
+        
+        # Export as WAV
+        print(f"  Saving to: {wav_file}")
+        audio.export(str(wav_file), format='wav')
+        
+        print(f"✓ Conversion complete!")
+        
+    except Exception as e:
+        print(f"✗ Error during conversion: {e}")
+        raise
+    
     print(f"✓ Saved: {wav_file}\n")
     
     # Step 2: Transcription (FIRST - to get language info)
@@ -82,9 +114,8 @@ def process_audio(audio_file, source_lang='pl', target_lang='en'):
     print("-"*70)
     cmd = [
         'python', 'timestamp_transcription.py',
-        '--audio', str(wav_file),
-        '--source-lang', source_lang,
-        '--target-lang', target_lang,
+        '--file', str(wav_file),
+        '--model', whisper_model,
         '--output', str(transcription_file)
     ]
     subprocess.run(cmd, check=True)
@@ -105,9 +136,16 @@ def process_audio(audio_file, source_lang='pl', target_lang='en'):
     # Step 3: Speaker Diarization (SECOND - uses language info)
     print("STEP 3: Speaker Diarization (with intelligent Agent mapping)")
     print("-"*70)
+    
+    # Clean up if diarization_file exists as directory
+    if diarization_file.exists() and diarization_file.is_dir():
+        print(f"  Removing corrupted directory: {diarization_file}")
+        import shutil
+        shutil.rmtree(diarization_file)
+    
     cmd = [
         'python', 'diarization.py',
-        '--audio', str(wav_file),
+        '--file', str(wav_file),
         '--transcription', str(transcription_file),
         '--num-speakers', str(num_speakers),  # Automatic based on language
         '--output', str(diarization_file)
@@ -134,11 +172,24 @@ def process_audio(audio_file, source_lang='pl', target_lang='en'):
     latency_output = latency_dir / f"{audio_name}_latency.json"
     cmd = [
         'python', 'latency_analyzer.py',
-        '--input', str(transcription_file),
+        '--file', str(transcription_file),
         '--output', str(latency_dir)
     ]
     subprocess.run(cmd, check=True)
     print(f"✓ Saved: {latency_output}\n")
+    
+    # Step 6: Visualization
+    print("STEP 6: Waveform Visualization")
+    print("-"*70)
+    viz_dir = output_base / "visualizations"
+    viz_dir.mkdir(exist_ok=True)
+    cmd = [
+        'python', 'visualizer.py',
+        '--file', str(wav_file),
+        '--output', str(viz_dir)
+    ]
+    subprocess.run(cmd, check=True)
+    print(f"✓ Saved visualizations to: {viz_dir}\n")
     
     # Create summary
     summary = {
@@ -183,11 +234,10 @@ Examples:
     
     parser.add_argument('--audio', type=str, required=True,
                         help='Path to audio file')
-    parser.add_argument('--source-lang', type=str, default='pl',
-                        help='Source language (default: pl)')
-    parser.add_argument('--target-lang', type=str, default='en',
-                        help='Target language (default: en)')
+    parser.add_argument('--model', type=str, default='large',
+                        choices=['tiny', 'base', 'small', 'medium', 'large'],
+                        help='Whisper model size (default: large)')
     
     args = parser.parse_args()
     
-    process_audio(args.audio, args.source_lang, args.target_lang)
+    process_audio(args.audio, args.model)

@@ -312,12 +312,17 @@ def process_diarization_results(segments, speakers_seen):
 def save_results(results, output_folder, audio_filename):
     """Save diarization results to JSON file"""
     
-    # Create output folder
     output_path = Path(output_folder)
-    output_path.mkdir(parents=True, exist_ok=True)
     
-    # Generate output filename
-    output_file = output_path / f"{Path(audio_filename).stem}_diarization.json"
+    # Check if output_folder is actually a complete file path (ends with .json)
+    if output_path.suffix == '.json':
+        # It's a complete file path, use it directly
+        output_file = output_path
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        # It's a folder path, create the file inside it
+        output_path.mkdir(parents=True, exist_ok=True)
+        output_file = output_path / f"{Path(audio_filename).stem}_diarization.json"
     
     # Write JSON with pretty formatting
     with open(output_file, 'w', encoding='utf-8') as f:
