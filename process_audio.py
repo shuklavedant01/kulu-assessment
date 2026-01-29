@@ -109,14 +109,31 @@ def process_audio(audio_file, whisper_model='large'):
     
     print(f"✓ Saved: {wav_file}\n")
     
-    # Step 2: Waveform Visualization (Moved Earlier)
+    # Step 1.5: Denoising (Demucs)
+    print("STEP 1.5: Denoising (Demucs - Vocals Isolation)")
+    print("-"*70)
+    enhanced_file = output_base / f"{audio_name}_enhanced.wav"
+    
+    cmd = [
+        'python', 'denoiser.py',
+        '--input', str(wav_file),
+        '--output', str(enhanced_file),
+        '--model', 'htdemucs'  # Good balance of speed/quality
+    ]
+    subprocess.run(cmd, check=True)
+    print(f"✓ Saved Enhanced Audio: {enhanced_file}\n")
+    
+    # Update current audio output to use ENHANCED file for all next steps
+    current_audio_file = enhanced_file
+    
+    # Step 2: Waveform Visualization (Uses Enhanced Audio)
     print("STEP 2: Waveform Visualization")
     print("-"*70)
     viz_dir = output_base / "visualizations"
     viz_dir.mkdir(exist_ok=True)
     cmd = [
         'python', 'visualizer.py',
-        '--file', str(wav_file),
+        '--file', str(current_audio_file),  # Visualize the CLEAN audio
         '--output', str(viz_dir)
     ]
     subprocess.run(cmd, check=True)
@@ -127,7 +144,7 @@ def process_audio(audio_file, whisper_model='large'):
     print("-"*70)
     cmd = [
         'python', 'timestamp_transcription.py',
-        '--file', str(wav_file),
+        '--file', str(current_audio_file),  # Transcribe CLEAN audio
         '--model', whisper_model,
         '--output', str(transcription_file)
     ]
@@ -158,7 +175,7 @@ def process_audio(audio_file, whisper_model='large'):
     
     cmd = [
         'python', 'diarization.py',
-        '--file', str(wav_file),
+        '--file', str(current_audio_file),  # Diarize CLEAN audio
         '--transcription', str(transcription_file),
         '--num-speakers', str(num_speakers),  # Automatic based on language
         '--output', str(diarization_file)
