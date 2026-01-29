@@ -1,0 +1,224 @@
+{
+  "filename": "audio1.wav",
+  "segments": [
+    {
+      "start": 2.48,
+      "end": 7.08,
+      "duration": 4.6,
+      "speaker": "Agent",
+      "text": "Hello, I'm here to help you understand our platform and answer any questions you might have.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 7.48,
+      "end": 12.0,
+      "duration": 4.52,
+      "speaker": "Agent",
+      "text": "Do you prefer a more casual onboarding or a professional onboarding?",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 12.4,
+      "end": 15.66,
+      "duration": 3.26,
+      "speaker": "Agent",
+      "text": "Also, before we dive in, could you share your screen?",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 16.04,
+      "end": 19.9,
+      "duration": 3.86,
+      "speaker": "Agent",
+      "text": "That way I can see exactly what you're looking at and guide you more effectively.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 23.74,
+      "end": 32.0,
+      "duration": 8.26,
+      "speaker": "User",
+      "text": "Хорошо, но до этого можно общаться на русском с тобой. Я очень хочу общаться на русском и говорить по-русски.",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 33.26,
+      "end": 37.32,
+      "duration": 4.06,
+      "speaker": "Agent",
+      "text": "Конечно, без проблем. Буду общаться с тобой по-русски.",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 37.5,
+      "end": 44.92,
+      "duration": 7.42,
+      "speaker": "Agent",
+      "text": "Итак, как мы договаривались, перед тем как начать, пожалуйста, поделись своим экраном, чтобы я мог видеть, что ты делаешь.",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 57.32,
+      "end": 60.44,
+      "duration": 3.12,
+      "speaker": "User",
+      "text": "Да, я на Meeting Links.",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 61.62,
+      "end": 68.94,
+      "duration": 7.32,
+      "speaker": "Agent",
+      "text": "Отлично, вижу твой экран. Сейчас мы займемся созданием организации на странице профиль.",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 69.08,
+      "end": 74.12,
+      "duration": 5.04,
+      "speaker": "Agent",
+      "text": "Для начала, пожалуйста, кликни по кнопке «Профиль» на боковой панели.",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 75.48,
+      "end": 79.36,
+      "duration": 3.88,
+      "speaker": "User",
+      "text": "Это не существует.",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 81.64,
+      "end": 82.52,
+      "duration": 0.88,
+      "speaker": "Agent",
+      "text": "Thank you.",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 83.9,
+      "end": 88.56,
+      "duration": 4.66,
+      "speaker": "Agent",
+      "text": "次は、アマリさんのCTOにお話をさせていただきます。",
+      "language": "ja",
+      "language_name": "japanese"
+    },
+    {
+      "start": 88.82,
+      "end": 90.38,
+      "duration": 1.56,
+      "speaker": "User",
+      "text": "Hello?",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 90.94,
+      "end": 91.96,
+      "duration": 1.02,
+      "speaker": "User",
+      "text": "Dá uma olhada aí.",
+      "language": "pt",
+      "language_name": "portuguese"
+    },
+    {
+      "start": 92.9,
+      "end": 95.02,
+      "duration": 2.12,
+      "speaker": "Agent",
+      "text": "Hello, how can I help you?",
+      "language": "en",
+      "language_name": "english"
+    },
+    {
+      "start": 96.8,
+      "end": 101.34,
+      "duration": 4.54,
+      "speaker": "User",
+      "text": "Нет, нет, нет, мы говорили по-русски. Что это? Почему ты говоришь по-английски?",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 103.04,
+      "end": 105.16,
+      "duration": 2.12,
+      "speaker": "Agent",
+      "text": "Конечно. Продолжим по-русски.",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 105.66,
+      "end": 109.58,
+      "duration": 3.92,
+      "speaker": "Agent",
+      "text": "Как мы и договорились, кнопки «Профиль» на боковой панели",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 109.9,
+      "end": 113.12,
+      "duration": 3.22,
+      "speaker": "Agent",
+      "text": "у тебя нет. Возможно, она называется по-другому.",
+      "language": "ru",
+      "language_name": "russian"
+    },
+    {
+      "start": 113.58,
+      "end": 116.88,
+      "duration": 3.3,
+      "speaker": "Agent",
+      "text": "Или, может быть, ты уже находишься на странице,",
+      "language": "ru",
+      "language_name": "russian"
+    }
+  ],
+  "statistics": {
+    "total_segments": 21,
+    "skipped_empty": 1,
+    "unknown_speaker": 0,
+    "agent_segments": 15,
+    "user_segments": 6,
+    "agent_speaking_time": 60.3,
+    "user_speaking_time": 22.38,
+    "agent_languages": [
+      "en",
+      "ja",
+      "ru"
+    ],
+    "user_languages": [
+      "en",
+      "pt",
+      "ru"
+    ]
+  },
+  "languages_detected": [
+    "en",
+    "ja",
+    "pt",
+    "ru"
+  ],
+  "is_multilingual": true,
+  "merge_settings": {
+    "min_overlap_ratio": 0.5,
+    "method": "timestamp-overlap-matching"
+  }
+}

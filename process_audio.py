@@ -109,8 +109,21 @@ def process_audio(audio_file, whisper_model='large'):
     
     print(f"✓ Saved: {wav_file}\n")
     
-    # Step 2: Transcription (FIRST - to get language info)
-    print("STEP 2: Transcription (Whisper)")
+    # Step 2: Waveform Visualization (Moved Earlier)
+    print("STEP 2: Waveform Visualization")
+    print("-"*70)
+    viz_dir = output_base / "visualizations"
+    viz_dir.mkdir(exist_ok=True)
+    cmd = [
+        'python', 'visualizer.py',
+        '--file', str(wav_file),
+        '--output', str(viz_dir)
+    ]
+    subprocess.run(cmd, check=True)
+    print(f"✓ Saved visualizations to: {viz_dir}\n")
+    
+    # Step 3: Transcription (Whisper)
+    print("STEP 3: Transcription (Whisper)")
     print("-"*70)
     cmd = [
         'python', 'timestamp_transcription.py',
@@ -133,8 +146,8 @@ def process_audio(audio_file, whisper_model='large'):
         print(f"  Monolingual detected: {languages} → Setting num_speakers=2")
     print()
     
-    # Step 3: Speaker Diarization (SECOND - uses language info)
-    print("STEP 3: Speaker Diarization (with intelligent Agent mapping)")
+    # Step 4: Speaker Diarization
+    print("STEP 4: Speaker Diarization (with intelligent Agent mapping)")
     print("-"*70)
     
     # Clean up if diarization_file exists as directory
@@ -153,43 +166,60 @@ def process_audio(audio_file, whisper_model='large'):
     subprocess.run(cmd, check=True)
     print(f"✓ Saved: {diarization_file}\n")
     
-    # Step 4: Cutout Detection
-    print("STEP 4: Cutout Detection")
+    # Step 5: Merge Transcription + Diarization (Dual Merge)
+    print("STEP 5: Merging Transcription + Diarization (English & Original)")
+    print("-"*70)
+    
+    # Merge 1: English Translation (Pass 1)
+    transcription_translated = transcription_file.parent / (transcription_file.stem + '_translated.json')
+    final_english = output_base / "final_english_translation.json"
+    
+    cmd = [
+        'python', 'merge_results.py',
+        '--transcription', str(transcription_translated),
+        '--diarization', str(diarization_file),
+        '--output', str(final_english)
+    ]
+    subprocess.run(cmd, check=True)
+    print(f"✓ Saved Final English: {final_english}")
+    
+    # Merge 2: Original Transcription (Pass 2)
+    final_original = output_base / "final_original_transcription.json"
+    cmd = [
+        'python', 'merge_results.py',
+        '--transcription', str(transcription_file),
+        '--diarization', str(diarization_file),
+        '--output', str(final_original)
+    ]
+    subprocess.run(cmd, check=True)
+    print(f"✓ Saved Final Original: {final_original}\n")
+    
+    # Step 6: Cutout Detection (uses English translation)
+    print("STEP 6: Cutout Detection")
     print("-"*70)
     cutout_output = cutouts_dir / f"{audio_name}_cutouts.json"
     cmd = [
         'python', 'cutout_detector_adaptive.py',
-        '-t', str(transcription_file),
+        '-t', str(final_english),  # Use Final English Translation
         '-d', str(diarization_file),
         '-o', str(cutouts_dir)
     ]
     subprocess.run(cmd, check=True)
     print(f"✓ Saved: {cutout_output}\n")
     
-    # Step 5: Latency Analysis
-    print("STEP 5: Latency Analysis")
+    # Step 7: Latency Analysis (uses English translation)
+    print("STEP 7: Latency Analysis")
     print("-"*70)
     latency_output = latency_dir / f"{audio_name}_latency.json"
     cmd = [
         'python', 'latency_analyzer.py',
-        '--file', str(transcription_file),
+        '--file', str(final_english),  # Use Final English Translation
         '--output', str(latency_dir)
     ]
     subprocess.run(cmd, check=True)
     print(f"✓ Saved: {latency_output}\n")
     
-    # Step 6: Visualization
-    print("STEP 6: Waveform Visualization")
-    print("-"*70)
-    viz_dir = output_base / "visualizations"
-    viz_dir.mkdir(exist_ok=True)
-    cmd = [
-        'python', 'visualizer.py',
-        '--file', str(wav_file),
-        '--output', str(viz_dir)
-    ]
-    subprocess.run(cmd, check=True)
-    print(f"✓ Saved visualizations to: {viz_dir}\n")
+    print("Pipeline Complete!\n")
     
     # Create summary
     summary = {

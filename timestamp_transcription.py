@@ -336,8 +336,8 @@ Examples:
     # Save with organized structure
     if args.output:
         # User specified output - save original there
-        original_path = args.output
-        translated_path = Path(args.output).stem + '_translated.json'
+        original_path = Path(args.output)
+        translated_path = original_path.parent / (original_path.stem + '_translated.json')
     else:
         # Default: outputs/transcription/<filename>_*.json
         output_dir = Path('outputs/transcription')

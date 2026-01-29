@@ -441,13 +441,13 @@ def detect_within_sentence_dropouts(whisper_segments, diarization_segments):
                 gap_end = overlapping_diar[i + 1]['start']
                 gap_duration = gap_end - gap_start
                 
-                if gap_duration > 0.5:
+                if gap_duration > 0.7:  # User-specified threshold
                     dropout_events.append({
                         'gap_start': gap_start,
                         'gap_end': gap_end,
                         'duration': round(gap_duration, 3),
                         'type': 'within_sentence_dropout',
-                        'confidence': 'high' if gap_duration > 1.0 else 'medium',
+                        'confidence': 'high' if gap_duration > 1.5 else 'medium',
                         'reason': f"Audio dropout of {gap_duration:.2f}s within continuous speech",
                         'context': {
                             'speaker': whisper_seg['speaker'],
@@ -577,7 +577,8 @@ def calculate_statistics(cutout_events):
         'by_type': by_type,
         'by_confidence': by_confidence,
         'total_lost_time': round(total_lost, 2),
-        'avg_cutout_duration': round(total_lost / len(cutout_events), 2) if cutout_events else 0
+        'avg_cutout_duration': round(total_lost / len(cutout_events), 2) if cutout_events else 0,
+        'longest_cutout_duration': round(max((e['duration'] for e in cutout_events), default=0), 2)
     }
 
 

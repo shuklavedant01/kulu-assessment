@@ -1,0 +1,12 @@
+{
+  "audio_name": "audio1",
+  "source_file": "/content/kulu-assessment/audio_files/audio1.oga",
+  "output_directory": "/content/kulu-assessment/outputs/audio1",
+  "files": {
+    "wav": "outputs/audio1/audio1.wav",
+    "diarization": "outputs/audio1/audio1_diarization.json",
+    "transcription": "outputs/audio1/audio1_complete.json",
+    "cutouts": "outputs/audio1/cutouts/audio1_cutouts.json",
+    "latency": "outputs/audio1/latency/audio1_latency.json"
+  }
+}
