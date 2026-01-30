@@ -9,6 +9,11 @@ import json
 from pathlib import Path
 from pydub import AudioSegment
 import argparse
+from utils import load_config
+
+# Load config
+CONFIG = load_config()
+TRANS_CONFIG = CONFIG.get('processing', {}).get('transcription', {})
 
 
 def get_timestamps_from_whisper(audio_path, model_name='base'):
@@ -50,7 +55,8 @@ def get_timestamps_from_whisper(audio_path, model_name='base'):
     for seg in result['segments']:
         # Skip segments with high no-speech probability (likely hallucinations)
         no_speech_prob = seg.get('no_speech_probability', 0)
-        if no_speech_prob > 0.6:  # Threshold: 60% confidence it's NOT speech
+        threshold = TRANS_CONFIG.get('hallucination_silence_threshold', 0.6)
+        if no_speech_prob > threshold:  # Threshold: confidence it's NOT speech
             skipped_hallucinations += 1
             continue
         filtered_segments.append(seg)

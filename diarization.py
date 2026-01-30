@@ -16,6 +16,7 @@ from pyannote.audio import Pipeline
 
 
 
+
 # Optional: Import noise reduction (if available)
 try:
     from noise_reduction import apply_noise_gate
@@ -27,6 +28,11 @@ except ImportError:
 import numpy as np
 from pydub import AudioSegment
 import math
+from utils import load_config
+
+# Load config
+CONFIG = load_config()
+DIAR_CONFIG = CONFIG.get('processing', {}).get('diarization', {})
 
 
 def detect_multilingual_and_assign_speakers(segments, transcription_file=None):
@@ -209,16 +215,19 @@ def diarize_audio(audio_path, pipeline, num_speakers=None):
 
 
 # Function to filter noise segments from diarization results
-def filter_noise_segments(segments, audio_path, min_duration=0.3, energy_threshold=-50, isolation_gap=2.0):
+    def filter_noise_segments(segments, audio_path, 
+                            min_duration=DIAR_CONFIG.get('min_segment_duration_s', 0.3), 
+                            energy_threshold=DIAR_CONFIG.get('noise_energy_threshold_db', -50), 
+                            isolation_gap=DIAR_CONFIG.get('noise_isolation_gap_s', 2.0)):
     """
     Filter out noise segments based on duration, energy, and isolation criteria
     
     Args:
         segments: List of diarization segments
         audio_path: Path to audio file (for energy analysis)
-        min_duration: Minimum segment duration in seconds (default 0.3s)
-        energy_threshold: Energy threshold in dBFS (default -50 dB)
-        isolation_gap: Gap before/after to consider isolated in seconds (default 2.0s)
+        min_duration: Minimum segment duration in seconds (default from config or 0.3s)
+        energy_threshold: Energy threshold in dBFS (default from config or -50 dB)
+        isolation_gap: Gap before/after to consider isolated in seconds (default from config or 2.0s)
     
     Returns:
         filtered_segments: Clean segments with noise removed

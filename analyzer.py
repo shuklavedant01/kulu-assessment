@@ -9,6 +9,11 @@ from pathlib import Path
 from pydub import AudioSegment
 from pydub.silence import detect_nonsilent
 import numpy as np
+from utils import load_config
+
+# Load config
+CONFIG = load_config()
+ANALYZER_CONFIG = CONFIG.get('processing', {}).get('analyzer', {})
 
 
 # Function to analyze a single audio file
@@ -29,8 +34,8 @@ def analyze_audio(audio_path):
     # A silent threshold of -40 dBFS is used (lower = more silent)
     nonsilent_ranges = detect_nonsilent(
         audio, 
-        min_silence_len=500,  # Minimum silence length in ms
-        silence_thresh=-40    # Silence threshold in dBFS
+        min_silence_len=ANALYZER_CONFIG.get('min_silence_len_ms', 500),  # Default: 500ms
+        silence_thresh=ANALYZER_CONFIG.get('silence_threshold_db', -40)  # Default: -40dB
     )
     has_content = len(nonsilent_ranges) > 0
     content_percentage = sum(end - start for start, end in nonsilent_ranges) / len(audio) * 100

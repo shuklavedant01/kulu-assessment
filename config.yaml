@@ -31,3 +31,20 @@ audio:
 logging:
   level: "INFO"
   format: "%(asctime)s - %(levelname)s - %(message)s"
+
+# Advanced Processing Configuration
+processing:
+  # Audio Analysis Thresholds
+  analyzer:
+    silence_threshold_db: -40   # Threshold for silence detection (dBFS)
+    min_silence_len_ms: 500     # Minimum silence length (ms)
+
+  # Diarization & Cleanup Thresholds
+  diarization:
+    min_segment_duration_s: 0.3 # Discard segments shorter than this
+    noise_energy_threshold_db: -50  # Silence threshold for noise filtering
+    noise_isolation_gap_s: 2.0  # Gap to consider segment isolated
+
+  # Transcription Thresholds
+  transcription:
+    hallucination_silence_threshold: 0.6  # Probability threshold to discard segments as noise/hallucinations
