@@ -16,7 +16,6 @@ from pyannote.audio import Pipeline
 
 
 
-
 # Optional: Import noise reduction (if available)
 try:
     from noise_reduction import apply_noise_gate
@@ -215,10 +214,10 @@ def diarize_audio(audio_path, pipeline, num_speakers=None):
 
 
 # Function to filter noise segments from diarization results
-    def filter_noise_segments(segments, audio_path, 
-                            min_duration=DIAR_CONFIG.get('min_segment_duration_s', 0.3), 
-                            energy_threshold=DIAR_CONFIG.get('noise_energy_threshold_db', -50), 
-                            isolation_gap=DIAR_CONFIG.get('noise_isolation_gap_s', 2.0)):
+def filter_noise_segments(segments, audio_path, 
+                        min_duration=DIAR_CONFIG.get('min_segment_duration_s', 0.3), 
+                        energy_threshold=DIAR_CONFIG.get('noise_energy_threshold_db', -50), 
+                        isolation_gap=DIAR_CONFIG.get('noise_isolation_gap_s', 2.0)):
     """
     Filter out noise segments based on duration, energy, and isolation criteria
     
