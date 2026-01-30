@@ -130,7 +130,8 @@ def calculate_gaps(segments):
             'before_speaker': current['speaker'],
             'after_speaker': next_seg['speaker'],
             'before_text': current.get('text', ''),
-            'after_text': next_seg.get('text', '')
+            'after_text': next_seg.get('text', ''),
+            'before_duration': round(current['end'] - current['start'], 3)
         })
     
     return gaps
@@ -405,6 +406,28 @@ def detect_user_response_delay(gap):
                 'reason': f"User hasn't responded in {gap['duration']:.0f}s ({gap['duration']/60:.1f} min), session likely abandoned"
             }
     
+    
+    return None
+
+
+
+
+def detect_user_drop_off(gap):
+    """
+    Rule 8 (User Drop-off): Did the user speak for < 1.0s and then vanish?
+    
+    Calculation:
+    1. User speaks for < 1.0 second (very short segment)
+    2. Followed by a silence > 5.0 seconds (vanish)
+    3. WITHOUT incomplete syntax (if syntax was incomplete, Rule 2 would catch it)
+    """
+    if gap['before_speaker'] == 'User' and gap['before_duration'] < 1.0:
+        if gap['duration'] > 5.0:
+            return {
+                'type': 'user_drop_off',
+                'confidence': 'medium',
+                'reason': f"User spoke briefly ({gap['before_duration']}s) and stopped for {gap['duration']}s"
+            }
     return None
 
 
@@ -510,6 +533,11 @@ def analyze_adaptive_cutouts(whisper_segments, diarization_segments=None):
         
         # Rules 6-7 Combined: User response monitoring
         result = detect_user_response_delay(gap)
+        if result:
+            detections.append(result)
+            
+        # Rule 8: User Drop-off
+        result = detect_user_drop_off(gap)
         if result:
             detections.append(result)
         
